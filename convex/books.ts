@@ -93,12 +93,42 @@ export const submitVideo = mutation({
 
     if (!book) throw new Error("Unable to create book record.");
 
+    if (book.status === "failed") {
+      await ctx.db.patch(book._id, {
+        status: "queued",
+        title: video.title ?? "Queued Readabook",
+        subtitle: null,
+        markup: "",
+        blocks: [],
+        preservationScore: null,
+        warnings: [],
+        completedAt: null,
+        failedAt: null,
+        errorMessage: null,
+      });
+      book = (await ctx.db.get(book._id)) ?? book;
+    }
+
     await saveBookForUser(ctx, user._id, book._id, "submitted");
 
     let job = await ctx.db
       .query("bookJobs")
       .withIndex("by_bookId", (q) => q.eq("bookId", book._id))
       .unique();
+
+    if (job && book.status !== "completed") {
+      await ctx.db.patch(job._id, {
+        status: "queued",
+        supadataJobId: null,
+        attempts: 0,
+        transcriptChars: 0,
+        errorMessage: null,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, internal.transcripts.fetchTranscript, {
+        jobId: job._id,
+      });
+    }
 
     if (!job && book.status !== "completed") {
       const jobId = await ctx.db.insert("bookJobs", {

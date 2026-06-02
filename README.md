@@ -1,51 +1,63 @@
-# Welcome to your Convex + Next.js + Clerk app
+# readabook
 
-This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
+readabook is a Clerk-enforced Next.js and Convex app that turns YouTube
+transcripts into saved, book-like reading experiences.
 
-After the initial setup (<2 minutes) you'll have a working full-stack app using:
+## What It Does
 
-- Convex as your backend (database, server logic)
-- [React](https://react.dev/) as your frontend (web page interactivity)
-- [Next.js](https://nextjs.org/) for optimized web hosting and page routing
-- [Tailwind](https://tailwindcss.com/) for building great looking accessible UI
-- [Clerk](https://clerk.com/) for authentication
+- Requires Clerk auth for every app route except `/sign-in` and `/sign-up`.
+- Accepts a YouTube URL and language code from an authenticated user.
+- Uses Supadata to fetch or poll for the video transcript.
+- Uses the OpenAI Agents SDK to format the transcript into readabook markup while
+  preserving the spoken words.
+- Stores one canonical Convex book per video/language/settings key.
+- Saves canonical books into each user's private library, including save-on-open
+  when a signed-in user visits `/books/[bookId]`.
 
-## Get started
+## Required Setup
 
-If you just cloned this codebase and didn't use `npm create convex`, run:
+Create these environment variables before real end-to-end use:
 
+### Next.js / Vercel
+
+```bash
+NEXT_PUBLIC_CONVEX_URL=
+NEXT_PUBLIC_CONVEX_SITE_URL=
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/
+NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
 ```
+
+### Convex
+
+```bash
+SUPADATA_API_KEY=
+OPENAI_API_KEY=
+READABOOK_OPENAI_MODEL=gpt-5.2
+```
+
+Configure Clerk's Convex JWT template with audience `convex`. Then replace the
+placeholder issuer in `convex/auth.config.ts` with your Clerk issuer URL before
+production deploy, or update it during setup to match your Clerk instance.
+
+## Development
+
+```bash
 npm install
 npm run dev
 ```
 
-If you're reading this README on GitHub and want to use this template, run:
+## Verification
 
+```bash
+npx convex codegen
+npm run lint
+npm run build
 ```
-npm create convex@latest -- -t nextjs-clerk
-```
 
-Then:
-
-1. Open your app. There should be a "Claim your application" button from Clerk in the bottom right of your app.
-2. Follow the steps to claim your application and link it to this app.
-3. Follow step 3 in the [Convex Clerk onboarding guide](https://docs.convex.dev/auth/clerk#get-started) to create a Convex JWT template.
-4. Uncomment the Clerk provider in `convex/auth.config.ts`
-5. Paste the Issuer URL as `CLERK_JWT_ISSUER_DOMAIN` to your dev deployment environment variable settings on the Convex dashboard (see [docs](https://docs.convex.dev/auth/clerk#configuring-dev-and-prod-instances))
-
-If you want to sync Clerk user data via webhooks, check out this [example repo](https://github.com/thomasballinger/convex-clerk-users-table/).
-
-## Learn more
-
-To learn more about developing your project with Convex, check out:
-
-- The [Tour of Convex](https://docs.convex.dev/get-started) for a thorough introduction to Convex principles.
-- The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
-- [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
-
-## Join the community
-
-Join thousands of developers building full-stack apps with Convex:
-
-- Join the [Convex Discord community](https://convex.dev/community) to get help in real-time.
-- Follow [Convex on GitHub](https://github.com/get-convex/), star and contribute to the open-source implementation of Convex.
+External API calls are server-side only. If `OPENAI_API_KEY` is missing, the
+formatter uses a transcript-preserving fallback so the job still creates a book
+for setup-time smoke tests.

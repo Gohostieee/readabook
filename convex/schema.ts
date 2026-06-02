@@ -1,12 +1,105 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-// The schema is entirely optional.
-// You can delete this file (schema.ts) and the
-// app will continue to work.
-// The schema provides more precise TypeScript types.
+const bookStatus = v.union(
+  v.literal("queued"),
+  v.literal("fetchingTranscript"),
+  v.literal("transcriptPending"),
+  v.literal("formatting"),
+  v.literal("validating"),
+  v.literal("completed"),
+  v.literal("failed"),
+);
+
+const bookBlockKind = v.union(
+  v.literal("title"),
+  v.literal("subtitle"),
+  v.literal("chapter"),
+  v.literal("section"),
+  v.literal("quote"),
+  v.literal("callout"),
+  v.literal("paragraph"),
+  v.literal("break"),
+);
+
 export default defineSchema({
-  numbers: defineTable({
-    value: v.number(),
-  }),
+  users: defineTable({
+    tokenIdentifier: v.string(),
+    name: v.union(v.string(), v.null()),
+    email: v.union(v.string(), v.null()),
+    imageUrl: v.union(v.string(), v.null()),
+    lastSeenAt: v.number(),
+  }).index("by_tokenIdentifier", ["tokenIdentifier"]),
+
+  videos: defineTable({
+    youtubeVideoId: v.string(),
+    url: v.string(),
+    canonicalUrl: v.string(),
+    title: v.union(v.string(), v.null()),
+    channelName: v.union(v.string(), v.null()),
+    thumbnailUrl: v.union(v.string(), v.null()),
+    durationSeconds: v.union(v.number(), v.null()),
+    preferredLang: v.string(),
+  }).index("by_youtubeVideoId", ["youtubeVideoId"]),
+
+  books: defineTable({
+    videoId: v.id("videos"),
+    bookKey: v.string(),
+    status: bookStatus,
+    title: v.string(),
+    subtitle: v.union(v.string(), v.null()),
+    markup: v.string(),
+    blocks: v.array(
+      v.object({
+        kind: bookBlockKind,
+        text: v.string(),
+      }),
+    ),
+    transcriptPreview: v.string(),
+    transcriptChecksum: v.union(v.string(), v.null()),
+    language: v.string(),
+    preservationScore: v.union(v.number(), v.null()),
+    warnings: v.array(v.string()),
+    completedAt: v.union(v.number(), v.null()),
+    failedAt: v.union(v.number(), v.null()),
+    errorMessage: v.union(v.string(), v.null()),
+  })
+    .index("by_videoId", ["videoId"])
+    .index("by_bookKey", ["bookKey"])
+    .index("by_status", ["status"]),
+
+  transcriptChunks: defineTable({
+    bookId: v.id("books"),
+    index: v.number(),
+    text: v.string(),
+    offset: v.union(v.number(), v.null()),
+    duration: v.union(v.number(), v.null()),
+    lang: v.string(),
+  }).index("by_bookId_and_index", ["bookId", "index"]),
+
+  userBooks: defineTable({
+    userId: v.id("users"),
+    bookId: v.id("books"),
+    savedAt: v.number(),
+    lastOpenedAt: v.number(),
+    source: v.union(v.literal("submitted"), v.literal("opened"), v.literal("saved")),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_bookId", ["bookId"])
+    .index("by_userId_and_bookId", ["userId", "bookId"]),
+
+  bookJobs: defineTable({
+    bookId: v.id("books"),
+    userId: v.id("users"),
+    status: bookStatus,
+    supadataJobId: v.union(v.string(), v.null()),
+    attempts: v.number(),
+    transcriptChars: v.number(),
+    errorMessage: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_bookId", ["bookId"])
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"]),
 });

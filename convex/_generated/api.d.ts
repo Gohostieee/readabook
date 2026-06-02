@@ -8,7 +8,10 @@
  * @module
  */
 
-import type * as myFunctions from "../myFunctions.js";
+import type * as books from "../books.js";
+import type * as formatter from "../formatter.js";
+import type * as lib from "../lib.js";
+import type * as transcripts from "../transcripts.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +20,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  myFunctions: typeof myFunctions;
+  books: typeof books;
+  formatter: typeof formatter;
+  lib: typeof lib;
+  transcripts: typeof transcripts;
 }>;
 
 /**

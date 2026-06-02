@@ -27,20 +27,6 @@ const statusValidator = v.union(
   v.literal("failed"),
 );
 
-const blockValidator = v.object({
-  kind: v.union(
-    v.literal("title"),
-    v.literal("subtitle"),
-    v.literal("chapter"),
-    v.literal("section"),
-    v.literal("quote"),
-    v.literal("callout"),
-    v.literal("paragraph"),
-    v.literal("break"),
-  ),
-  text: v.string(),
-});
-
 export const submitVideo = mutation({
   args: {
     url: v.string(),

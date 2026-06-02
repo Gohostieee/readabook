@@ -7,5 +7,10 @@ export default defineConfig([
   ...nextCoreWebVitals,
   ...nextTypescript,
   ...convexPlugin.configs.recommended,
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
   globalIgnores(["convex/_generated"]),
 ]);

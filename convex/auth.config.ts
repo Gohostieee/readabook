@@ -3,7 +3,7 @@ import { AuthConfig } from "convex/server";
 export default {
   providers: [
     {
-      domain: "https://communal-beetle-31.clerk.accounts.dev",
+      domain: "https://clerk.readabook.newsoul.dev",
       applicationID: "convex",
     },
   ],

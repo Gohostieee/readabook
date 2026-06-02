@@ -2,6 +2,7 @@
 
 import { Supadata } from "@supadata/js";
 import { v } from "convex/values";
+import { fetchTranscript as fetchYoutubeTranscript } from "youtube-transcript";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
@@ -51,6 +52,21 @@ function normalizeTranscript(result: unknown, fallbackLang: string) {
         duration: null,
         lang: transcript.lang ?? fallbackLang,
       })),
+  };
+}
+
+async function fetchTranscriptFallback(videoId: string, lang: string) {
+  const transcript = await fetchYoutubeTranscript(videoId, { lang });
+  return {
+    language: lang,
+    chunks: transcript
+      .map((chunk) => ({
+        text: chunk.text.trim(),
+        offset: typeof chunk.offset === "number" ? chunk.offset : null,
+        duration: typeof chunk.duration === "number" ? chunk.duration : null,
+        lang,
+      }))
+      .filter((chunk) => chunk.text.length > 0),
   };
 }
 
@@ -136,12 +152,35 @@ export const fetchTranscript = internalAction({
       });
       return null;
     } catch (error) {
-      await ctx.runMutation(internal.books.markJobStatus, {
-        jobId: args.jobId,
-        status: "failed",
-        errorMessage:
-          error instanceof Error ? error.message : "Transcript fetch failed.",
-      });
+      try {
+        const normalized = await fetchTranscriptFallback(
+          video.youtubeVideoId,
+          book.language,
+        );
+        if (normalized.chunks.length === 0) {
+          throw new Error("Fallback transcript returned no chunks.");
+        }
+        await ctx.runMutation(internal.books.storeTranscript, {
+          jobId: args.jobId,
+          language: normalized.language,
+          chunks: normalized.chunks,
+        });
+        await ctx.scheduler.runAfter(0, internal.formatter.formatBook, {
+          jobId: args.jobId,
+        });
+      } catch (fallbackError) {
+        const primaryMessage =
+          error instanceof Error ? error.message : "Transcript fetch failed.";
+        const fallbackMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Fallback transcript fetch failed.";
+        await ctx.runMutation(internal.books.markJobStatus, {
+          jobId: args.jobId,
+          status: "failed",
+          errorMessage: `${primaryMessage}; fallback failed: ${fallbackMessage}`,
+        });
+      }
       return null;
     }
   },

@@ -144,10 +144,19 @@ export const formatBook = internalAction({
       });
       return null;
     } catch (error) {
-      await ctx.runMutation(internal.books.failOrRetryFormatting, {
+      const fallback = fallbackBookFromTranscript(title, transcript);
+      const validation = validateMarkup(transcript, fallback.markup);
+      await ctx.runMutation(internal.books.completeBook, {
         jobId: args.jobId,
-        errorMessage:
-          error instanceof Error ? error.message : "Book formatting failed.",
+        title,
+        subtitle: "A transcript-formatted book",
+        markup: fallback.markup,
+        preservationScore: validation.preservation,
+        warnings: [
+          `OpenAI formatting failed; used transcript-preserving fallback. ${
+            error instanceof Error ? error.message : "Book formatting failed."
+          }`,
+        ],
       });
       return null;
     }

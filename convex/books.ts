@@ -8,14 +8,34 @@ import {
   query,
 } from "./_generated/server";
 import {
+  type BookBlock,
+  blocksToPlainText,
   canonicalYoutubeUrl,
   checksum,
   extractYoutubeVideoId,
-  parseBookMarkup,
-  requireUser,
+  getExistingUser,
   saveBookForUser,
   touchUser,
 } from "./lib";
+
+const blockKindValidator = v.union(
+  v.literal("title"),
+  v.literal("subtitle"),
+  v.literal("chapter"),
+  v.literal("section"),
+  v.literal("quote"),
+  v.literal("pullquote"),
+  v.literal("epigraph"),
+  v.literal("callout"),
+  v.literal("paragraph"),
+  v.literal("dialogue"),
+  v.literal("list"),
+  v.literal("steps"),
+  v.literal("diagram"),
+  v.literal("keyTerm"),
+  v.literal("stat"),
+  v.literal("break"),
+);
 
 const statusValidator = v.union(
   v.literal("queued"),
@@ -178,7 +198,7 @@ export const getBook = mutation({
 export const getBookReadonly = query({
   args: { bookId: v.id("books") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    await ctx.auth.getUserIdentity();
     const book = await ctx.db.get(args.bookId);
     if (!book) return null;
     const video = await ctx.db.get(book.videoId);
@@ -193,7 +213,15 @@ export const getBookReadonly = query({
 export const listMyBooks = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await getExistingUser(ctx);
+    if (!user) {
+      return {
+        page: [],
+        isDone: true,
+        continueCursor: args.paginationOpts.cursor ?? "",
+      };
+    }
+
     const page = await ctx.db
       .query("userBooks")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
@@ -215,7 +243,8 @@ export const listMyBooks = query({
 export const getJob = query({
   args: { jobId: v.id("bookJobs") },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await getExistingUser(ctx);
+    if (!user) return null;
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== user._id) return null;
     const book = await ctx.db.get(job.bookId);
@@ -350,22 +379,31 @@ export const completeBook = internalMutation({
     jobId: v.id("bookJobs"),
     title: v.string(),
     subtitle: v.union(v.string(), v.null()),
-    markup: v.string(),
+    blocks: v.array(
+      v.object({
+        kind: blockKindValidator,
+        text: v.string(),
+        data: v.optional(v.any()),
+      }),
+    ),
+    readingMinutes: v.optional(v.number()),
     preservationScore: v.number(),
     warnings: v.array(v.string()),
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job) throw new Error("Job not found.");
-    const blocks = parseBookMarkup(args.markup);
+    const blocks = args.blocks as BookBlock[];
     if (blocks.length === 0) throw new Error("Formatted book has no content.");
 
     await ctx.db.patch(job.bookId, {
       status: "completed",
       title: args.title,
       subtitle: args.subtitle,
-      markup: args.markup,
-      blocks,
+      // Flattened plain text kept for back-compat / search / preview.
+      markup: blocksToPlainText(blocks),
+      blocks: args.blocks,
+      readingMinutes: args.readingMinutes,
       preservationScore: args.preservationScore,
       warnings: args.warnings,
       completedAt: Date.now(),

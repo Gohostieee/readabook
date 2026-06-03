@@ -17,8 +17,16 @@ const bookBlockKind = v.union(
   v.literal("chapter"),
   v.literal("section"),
   v.literal("quote"),
+  v.literal("pullquote"),
+  v.literal("epigraph"),
   v.literal("callout"),
   v.literal("paragraph"),
+  v.literal("dialogue"),
+  v.literal("list"),
+  v.literal("steps"),
+  v.literal("diagram"),
+  v.literal("keyTerm"),
+  v.literal("stat"),
   v.literal("break"),
 );
 
@@ -53,8 +61,14 @@ export default defineSchema({
       v.object({
         kind: bookBlockKind,
         text: v.string(),
+        // Optional structured payload for rich block kinds (dialogue turns,
+        // list items, diagram specs, callout variants, etc.). The Zod schema in
+        // convex/formatter.ts is the authoritative shape guard; we keep this
+        // loose so block types can evolve without a schema migration.
+        data: v.optional(v.any()),
       }),
     ),
+    readingMinutes: v.optional(v.number()),
     transcriptPreview: v.string(),
     transcriptChecksum: v.union(v.string(), v.null()),
     language: v.string(),

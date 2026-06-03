@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  type BookBlock,
   blocksToMarkup,
+  blocksToPlainText,
   fallbackBookFromTranscript,
   parseBookMarkup,
 } from "./lib";
@@ -44,5 +46,57 @@ describe("book markup helpers", () => {
     expect(blocksToMarkup(parsed)).toContain(
       "Second paragraph also keeps the original spoken words.",
     );
+  });
+});
+
+describe("blocksToPlainText", () => {
+  test("flattens spoken content from every rich block kind", () => {
+    const blocks: BookBlock[] = [
+      { kind: "title", text: "My Book" },
+      { kind: "paragraph", text: "A spoken sentence." },
+      {
+        kind: "dialogue",
+        text: "",
+        data: {
+          turns: [
+            { speaker: "Host", text: "How are you?" },
+            { speaker: "Guest", text: "Doing great." },
+          ],
+        },
+      },
+      {
+        kind: "list",
+        text: "",
+        data: {
+          ordered: false,
+          items: [{ text: "first item", subitems: ["nested item"] }],
+        },
+      },
+      {
+        kind: "diagram",
+        text: "",
+        data: {
+          variant: "flow",
+          steps: [{ label: "Start here" }, { label: "Then finish" }],
+        },
+      },
+      { kind: "keyTerm", text: "", data: { term: "Latency", definition: "The delay before transfer." } },
+    ];
+
+    const plain = blocksToPlainText(blocks);
+    for (const phrase of [
+      "My Book",
+      "A spoken sentence.",
+      "How are you?",
+      "Doing great.",
+      "first item",
+      "nested item",
+      "Start here",
+      "Then finish",
+      "Latency",
+      "The delay before transfer.",
+    ]) {
+      expect(plain).toContain(phrase);
+    }
   });
 });

@@ -1,0 +1,307 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Spinner } from "@/components/ui/spinner";
+import { Block } from "./Block";
+import { CoverPage } from "./CoverPage";
+import { IndexPage } from "./IndexPage";
+import { PageView } from "./PageView";
+import { ReaderControls } from "./ReaderControls";
+import { paginate, type PaginateBlock } from "./paginate";
+import type { BookBlock, Chapter, ChapterData } from "./types";
+
+// Shared page-frame styling for the deck, measurer, and metrics probe.
+const FRAME_CLASS =
+  "book-page border bg-reader text-reader-foreground px-6 py-8 sm:px-10 sm:py-12 shadow-sm";
+
+type ReaderEngineProps = {
+  blocks: BookBlock[];
+  title: string;
+  subtitle?: string | null;
+  channel?: string | null;
+  thumbnailUrl?: string | null;
+  language: string;
+  readingMinutes?: number | null;
+  preservationScore?: number | null;
+};
+
+export function ReaderEngine(props: ReaderEngineProps) {
+  // Title/subtitle live on the cover; everything else is paginated content.
+  const contentBlocks = useMemo(
+    () =>
+      props.blocks.filter(
+        (b) => b.kind !== "title" && b.kind !== "subtitle",
+      ),
+    [props.blocks],
+  );
+
+  const chapters = useMemo<Chapter[]>(
+    () =>
+      contentBlocks
+        .filter((b) => b.kind === "chapter")
+        .map((b) => {
+          const data = b.data as ChapterData | undefined;
+          return { text: b.text, act: data?.act, summary: data?.summary };
+        }),
+    [contentBlocks],
+  );
+
+  const deckRef = useRef<HTMLDivElement>(null);
+  const metricsRef = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState<{ w: number; h: number } | null>(null);
+  const [heights, setHeights] = useState<number[] | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [turn, setTurn] = useState<"none" | "next" | "prev">("none");
+
+  // Measure the page content box from the live deck.
+  useLayoutEffect(() => {
+    const el = metricsRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) {
+        setMetrics((prev) =>
+          prev && prev.w === w && prev.h === h ? prev : { w, h },
+        );
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Re-measure block heights whenever the content width changes or fonts load.
+  const measureWidth = metrics?.w ?? 0;
+
+  const paginateBlocks = useMemo<PaginateBlock[]>(
+    () =>
+      contentBlocks.map((b) => ({ kind: b.kind, textLength: b.text.length })),
+    [contentBlocks],
+  );
+
+  // Content pages reserve room for the page-number footer (mt-4 + line ≈ 32px).
+  const FOOTER_RESERVE = 32;
+
+  const { pages, chapterStartPages } = useMemo(() => {
+    if (!heights || !metrics) return { pages: [], chapterStartPages: [] };
+    return paginate(
+      paginateBlocks,
+      heights,
+      Math.max(120, metrics.h - FOOTER_RESERVE),
+    );
+  }, [heights, metrics, paginateBlocks]);
+
+  // Deck = cover + index + content pages.
+  const COVER = 0;
+  const INDEX = 1;
+  const CONTENT_OFFSET = 2;
+  const totalPages = pages.length + CONTENT_OFFSET;
+
+  // Display page numbers for the index (1-based across the whole deck).
+  const chapterPageNumbers = useMemo(
+    () => chapterStartPages.map((p) => p + CONTENT_OFFSET + 1),
+    [chapterStartPages],
+  );
+
+  const goTo = useCallback(
+    (next: number) => {
+      setCurrentPage((prev) => {
+        const clamped = Math.min(Math.max(next, 0), totalPages - 1);
+        if (clamped === prev) return prev;
+        setTurn(clamped > prev ? "next" : "prev");
+        return clamped;
+      });
+    },
+    [totalPages],
+  );
+
+  const goNext = useCallback(
+    () => goTo(currentPage + 1),
+    [currentPage, goTo],
+  );
+  const goPrev = useCallback(
+    () => goTo(currentPage - 1),
+    [currentPage, goTo],
+  );
+
+  // Keyboard navigation.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "PageDown") goNext();
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") goPrev();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [goNext, goPrev]);
+
+  // Touch swipe.
+  const touchX = useRef<number | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    if (Math.abs(dx) > 50) (dx < 0 ? goNext : goPrev)();
+    touchX.current = null;
+  };
+
+  // Clear the turn flag after the animation so it can replay.
+  useEffect(() => {
+    if (turn === "none") return;
+    const t = window.setTimeout(() => setTurn("none"), 360);
+    return () => window.clearTimeout(t);
+  }, [turn, currentPage]);
+
+  const jumpToChapter = useCallback(
+    (chapterIndex: number) => {
+      const start = chapterStartPages[chapterIndex];
+      if (typeof start === "number") goTo(start + CONTENT_OFFSET);
+    },
+    [chapterStartPages, goTo],
+  );
+
+  const ready = heights !== null && metrics !== null && pages.length > 0;
+
+  let body: React.ReactNode;
+  if (currentPage === COVER) {
+    body = (
+      <CoverPage
+        title={props.title}
+        subtitle={props.subtitle}
+        channel={props.channel}
+        thumbnailUrl={props.thumbnailUrl}
+        language={props.language}
+        readingMinutes={props.readingMinutes}
+        preservationScore={props.preservationScore}
+      />
+    );
+  } else if (currentPage === INDEX) {
+    body = (
+      <IndexPage
+        chapters={chapters}
+        pageNumbers={chapterPageNumbers}
+        onJump={jumpToChapter}
+      />
+    );
+  } else if (ready) {
+    const page = pages[currentPage - CONTENT_OFFSET];
+    body = page ? (
+      <PageView
+        page={page}
+        blocks={contentBlocks}
+        pageNumber={currentPage + 1}
+      />
+    ) : null;
+  } else {
+    body = (
+      <div className="flex h-full items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-2xl">
+      <div
+        ref={deckRef}
+        className="relative"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        <div
+          key={currentPage}
+          className={`${FRAME_CLASS} book-page-deck ${
+            turn === "next"
+              ? "animate-page-next"
+              : turn === "prev"
+                ? "animate-page-prev"
+                : ""
+          }`}
+        >
+          {/* Invisible probe that mirrors the content box for measurement. */}
+          <div
+            ref={metricsRef}
+            aria-hidden
+            className="pointer-events-none invisible absolute inset-x-6 inset-y-8 sm:inset-x-10 sm:inset-y-12"
+          />
+          {body}
+        </div>
+      </div>
+
+      <ReaderControls
+        current={currentPage}
+        total={totalPages}
+        onPrev={goPrev}
+        onNext={goNext}
+      />
+
+      {/* Offscreen measurer: renders every content block at the true width. */}
+      {measureWidth > 0 ? (
+        <Measurer
+          key={measureWidth}
+          blocks={contentBlocks}
+          width={measureWidth}
+          onMeasured={setHeights}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function Measurer({
+  blocks,
+  width,
+  onMeasured,
+}: {
+  blocks: BookBlock[];
+  width: number;
+  onMeasured: (heights: number[]) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const children = Array.from(el.children) as HTMLElement[];
+      onMeasured(children.map((c) => c.offsetHeight));
+    };
+    measure();
+    // Re-measure once webfonts settle (serif metrics shift heights).
+    let cancelled = false;
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      void document.fonts.ready.then(() => {
+        if (!cancelled) measure();
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [blocks, width, onMeasured]);
+
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none invisible fixed left-0 top-0 -z-50"
+      style={{ width }}
+    >
+      <div ref={ref} className="reader-flow">
+        {blocks.map((block, i) => (
+          <div key={i}>
+            <Block block={block} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

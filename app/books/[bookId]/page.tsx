@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { UserButton } from "@clerk/nextjs";
 import {
   ArrowLeft,
@@ -34,12 +34,13 @@ const progressByStatus = {
 } as const;
 
 export default function BookPage({ params }: PageProps) {
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const [bookId, setBookId] = useState<Id<"books"> | null>(null);
   const [copied, setCopied] = useState(false);
   const saveOnOpen = useMutation(api.books.getBook);
   const data = useQuery(
     api.books.getBookReadonly,
-    bookId ? { bookId } : "skip",
+    isAuthenticated && bookId ? { bookId } : "skip",
   );
 
   useEffect(() => {
@@ -47,9 +48,9 @@ export default function BookPage({ params }: PageProps) {
   }, [params]);
 
   useEffect(() => {
-    if (!bookId) return;
+    if (!isAuthenticated || !bookId) return;
     void saveOnOpen({ bookId });
-  }, [bookId, saveOnOpen]);
+  }, [bookId, isAuthenticated, saveOnOpen]);
 
   const book = data?.book;
   const video = data?.video;
@@ -97,7 +98,7 @@ export default function BookPage({ params }: PageProps) {
         </div>
       </header>
 
-      {!book ? (
+      {isAuthLoading || !book ? (
         <section className="mx-auto flex max-w-3xl flex-col items-center px-4 py-24 text-center">
           <Loader2 className="mb-4 size-8 animate-spin text-muted-foreground" />
           <h1 className="text-2xl font-semibold">Opening book</h1>

@@ -1,7 +1,12 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import {
+  useConvexAuth,
+  useMutation,
+  usePaginatedQuery,
+  useQuery,
+} from "convex/react";
 import { UserButton } from "@clerk/nextjs";
 import {
   ArrowRight,
@@ -50,6 +55,7 @@ type SubmitResult = {
 };
 
 export default function Home() {
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const [url, setUrl] = useState("");
   const [preferredLang, setPreferredLang] = useState("en");
   const [submitting, setSubmitting] = useState(false);
@@ -59,11 +65,11 @@ export default function Home() {
   const removeFromLibrary = useMutation(api.books.removeFromLibrary);
   const activeJob = useQuery(
     api.books.getJob,
-    active?.jobId ? { jobId: active.jobId } : "skip",
+    isAuthenticated && active?.jobId ? { jobId: active.jobId } : "skip",
   );
   const library = usePaginatedQuery(
     api.books.listMyBooks,
-    {},
+    isAuthenticated ? {} : "skip",
     { initialNumItems: 12 },
   );
 
@@ -73,6 +79,14 @@ export default function Home() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isAuthenticated) {
+      setError(
+        isAuthLoading
+          ? "Authentication is still loading. Please try again in a moment."
+          : "Sign in before creating a book.",
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -144,7 +158,11 @@ export default function Home() {
                   aria-label="Transcript language"
                   maxLength={8}
                 />
-                <Button type="submit" disabled={submitting} className="gap-2">
+                <Button
+                  type="submit"
+                  disabled={submitting || isAuthLoading || !isAuthenticated}
+                  className="gap-2"
+                >
                   {submitting ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
@@ -216,7 +234,7 @@ export default function Home() {
               ) : null}
             </div>
 
-            {library.status === "LoadingFirstPage" ? (
+            {isAuthLoading || library.status === "LoadingFirstPage" ? (
               <div className="rounded-md border p-5 text-sm text-muted-foreground">
                 Loading your library...
               </div>
@@ -253,7 +271,11 @@ export default function Home() {
                           variant="ghost"
                           size="icon"
                           aria-label="Remove from library"
-                          onClick={() => void removeFromLibrary({ bookId: book._id })}
+                          disabled={!isAuthenticated}
+                          onClick={() => {
+                            if (!isAuthenticated) return;
+                            void removeFromLibrary({ bookId: book._id });
+                          }}
                         >
                           <Trash2 className="size-4" />
                         </Button>

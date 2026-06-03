@@ -116,4 +116,37 @@ export default defineSchema({
     .index("by_bookId", ["bookId"])
     .index("by_userId", ["userId"])
     .index("by_status", ["status"]),
+
+  // Internal cost ledger: one row per LLM request so we can see exactly how
+  // much each formatting run cost. Token counts come from the Agents SDK usage
+  // when available, falling back to a local tokenizer estimate.
+  aiRequestLogs: defineTable({
+    model: v.string(),
+    operation: v.string(),
+    // success = model produced output; fallback = we used transcript fallback
+    // (no API key / parse failure); failed = request threw with no fallback.
+    status: v.union(
+      v.literal("success"),
+      v.literal("fallback"),
+      v.literal("failed"),
+    ),
+    inputTokens: v.number(),
+    cachedInputTokens: v.number(),
+    outputTokens: v.number(),
+    totalTokens: v.number(),
+    // How token counts were obtained: the SDK's reported usage or our local
+    // tokenizer estimate.
+    tokenSource: v.union(v.literal("usage"), v.literal("tokenizer")),
+    costUsd: v.number(),
+    durationMs: v.number(),
+    errorMessage: v.union(v.string(), v.null()),
+    bookId: v.union(v.id("books"), v.null()),
+    jobId: v.union(v.id("bookJobs"), v.null()),
+    userId: v.union(v.id("users"), v.null()),
+    createdAt: v.number(),
+  })
+    .index("by_bookId", ["bookId"])
+    .index("by_jobId", ["jobId"])
+    .index("by_userId", ["userId"])
+    .index("by_createdAt", ["createdAt"]),
 });

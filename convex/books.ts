@@ -343,6 +343,9 @@ export const storeTranscript = internalMutation({
     });
     await ctx.db.patch(args.jobId, {
       status: "formatting",
+      // Reset the attempt counter now that the transcript stage succeeded so
+      // the formatting stage gets its own fresh retry budget.
+      attempts: 0,
       transcriptChars: transcriptText.length,
       errorMessage: null,
       updatedAt: Date.now(),
@@ -450,6 +453,59 @@ export const failOrRetryFormatting = internalMutation({
       await ctx.scheduler.runAfter(1000, internal.formatter.formatBook, {
         jobId: args.jobId,
       });
+    }
+
+    return { shouldRetry, attempts };
+  },
+});
+
+// YouTube intermittently rate-limits / captcha-walls the fallback transcript
+// scraper, and Supadata can transiently fail too. Rather than surfacing a hard
+// failure to the user, retry the whole transcript stage with exponential
+// backoff for a generous number of attempts before giving up.
+const MAX_TRANSCRIPT_ATTEMPTS = 8;
+
+function transcriptRetryDelayMs(attempts: number): number {
+  // attempts is the count *after* the just-failed try (1-based). Backoff:
+  // 15s, 30s, 60s, 120s, ... capped at 5 minutes.
+  const base = 15_000;
+  const delay = base * 2 ** (attempts - 1);
+  return Math.min(delay, 5 * 60_000);
+}
+
+export const failOrRetryTranscript = internalMutation({
+  args: {
+    jobId: v.id("bookJobs"),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return null;
+    const attempts = job.attempts + 1;
+    const shouldRetry = attempts < MAX_TRANSCRIPT_ATTEMPTS;
+    const status = shouldRetry ? "fetchingTranscript" : "failed";
+    const now = Date.now();
+
+    await ctx.db.patch(args.jobId, {
+      attempts,
+      status,
+      // Clear any stale Supadata job id so the retry starts the flow fresh.
+      supadataJobId: null,
+      errorMessage: args.errorMessage,
+      updatedAt: now,
+    });
+    await ctx.db.patch(job.bookId, {
+      status,
+      errorMessage: args.errorMessage,
+      failedAt: shouldRetry ? null : now,
+    });
+
+    if (shouldRetry) {
+      await ctx.scheduler.runAfter(
+        transcriptRetryDelayMs(attempts),
+        internal.transcripts.fetchTranscript,
+        { jobId: args.jobId },
+      );
     }
 
     return { shouldRetry, attempts };

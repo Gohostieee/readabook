@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aiCosts from "../aiCosts.js";
 import type * as books from "../books.js";
 import type * as formatter from "../formatter.js";
 import type * as lib from "../lib.js";
@@ -20,6 +21,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiCosts: typeof aiCosts;
   books: typeof books;
   formatter: typeof formatter;
   lib: typeof lib;

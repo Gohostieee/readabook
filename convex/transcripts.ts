@@ -175,9 +175,8 @@ export const fetchTranscript = internalAction({
           fallbackError instanceof Error
             ? fallbackError.message
             : "Fallback transcript fetch failed.";
-        await ctx.runMutation(internal.books.markJobStatus, {
+        await ctx.runMutation(internal.books.failOrRetryTranscript, {
           jobId: args.jobId,
-          status: "failed",
           errorMessage: `${primaryMessage}; fallback failed: ${fallbackMessage}`,
         });
       }
@@ -226,9 +225,8 @@ export const pollTranscript = internalAction({
       });
       return null;
     } catch (error) {
-      await ctx.runMutation(internal.books.markJobStatus, {
+      await ctx.runMutation(internal.books.failOrRetryTranscript, {
         jobId: args.jobId,
-        status: "failed",
         errorMessage:
           error instanceof Error ? error.message : "Transcript polling failed.",
       });

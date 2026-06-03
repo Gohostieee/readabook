@@ -2,9 +2,11 @@
 
 import { Agent, run } from "@openai/agents";
 import { v } from "convex/values";
+import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { z } from "zod";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import { computeCostUsd } from "./aiCosts";
 import {
   type BookBlock,
   blocksToPlainText,
@@ -286,6 +288,26 @@ const INSTRUCTIONS = [
   "Also return an honest `preservationScore` (0-1) estimate and any `warnings`. Estimate `readingMinutes`.",
 ].join("\n");
 
+// Pull a normalized token breakdown out of the Agents SDK usage object. Cached
+// tokens live in `inputTokensDetails` under the `cached_tokens` key.
+function readUsage(usage: {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  inputTokensDetails?: Array<Record<string, number>>;
+}) {
+  const cachedInputTokens = (usage.inputTokensDetails ?? []).reduce(
+    (sum, details) => sum + (details.cached_tokens ?? 0),
+    0,
+  );
+  return {
+    inputTokens: usage.inputTokens,
+    cachedInputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+  };
+}
+
 export const formatBook = internalAction({
   args: { jobId: v.id("bookJobs") },
   handler: async (ctx, args) => {
@@ -294,9 +316,45 @@ export const formatBook = internalAction({
     });
     if (!payload) return null;
 
+    const model = process.env.READABOOK_OPENAI_MODEL ?? "gpt-5.5";
+    const bookId = payload.book._id;
+    const userId = payload.job.userId;
+
     const title =
       payload.video?.title ?? payload.book.title ?? "Untitled Readabook";
     const transcript = payload.transcriptText.trim();
+
+    // Records exactly one cost-ledger row per formatting run.
+    const logRequest = async (entry: {
+      status: "success" | "fallback" | "failed";
+      tokens: {
+        inputTokens: number;
+        cachedInputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+      };
+      tokenSource: "usage" | "tokenizer";
+      durationMs: number;
+      errorMessage?: string | null;
+    }) => {
+      await ctx.runMutation(internal.aiCosts.logAiRequest, {
+        model,
+        operation: "formatBook",
+        status: entry.status,
+        inputTokens: entry.tokens.inputTokens,
+        cachedInputTokens: entry.tokens.cachedInputTokens,
+        outputTokens: entry.tokens.outputTokens,
+        totalTokens: entry.tokens.totalTokens,
+        tokenSource: entry.tokenSource,
+        costUsd: computeCostUsd({ model, ...entry.tokens }),
+        durationMs: entry.durationMs,
+        errorMessage: entry.errorMessage ?? null,
+        bookId,
+        jobId: args.jobId,
+        userId,
+      });
+    };
+
     if (!transcript) {
       await ctx.runMutation(internal.books.failOrRetryFormatting, {
         jobId: args.jobId,
@@ -319,36 +377,78 @@ export const formatBook = internalAction({
       });
     };
 
-    try {
-      if (!process.env.OPENAI_API_KEY) {
-        await completeWithFallback(
-          "OPENAI_API_KEY is not configured; used transcript-preserving fallback formatting.",
-        );
-        return null;
-      }
+    const userInput = [
+      `Video title: ${title}`,
+      `Language: ${payload.book.language}`,
+      "Format the transcript below into a structured readabook. Preserve the wording; choose the right block kinds for what is actually happening.",
+      "Transcript:",
+      transcript,
+    ].join("\n\n");
 
+    const startedAt = Date.now();
+
+    if (!process.env.OPENAI_API_KEY) {
+      // No request is made, so cost is zero — but we still record the run.
+      await logRequest({
+        status: "fallback",
+        tokens: {
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+        tokenSource: "tokenizer",
+        durationMs: Date.now() - startedAt,
+        errorMessage: "OPENAI_API_KEY is not configured.",
+      });
+      await completeWithFallback(
+        "OPENAI_API_KEY is not configured; used transcript-preserving fallback formatting.",
+      );
+      return null;
+    }
+
+    try {
       const agent = new Agent({
         name: "Readabook book editor",
-        model: process.env.READABOOK_OPENAI_MODEL ?? "gpt-5.5",
+        model,
         outputType: formattedBookSchema,
         instructions: INSTRUCTIONS,
       });
 
-      const result = await run(
-        agent,
-        [
-          `Video title: ${title}`,
-          `Language: ${payload.book.language}`,
-          "Format the transcript below into a structured readabook. Preserve the wording; choose the right block kinds for what is actually happening.",
-          "Transcript:",
-          transcript,
-        ].join("\n\n"),
-        { maxTurns: 8 },
-      );
+      const result = await run(agent, userInput, { maxTurns: 8 });
+
+      // Prefer the SDK's reported usage; fall back to a local tokenizer
+      // estimate only when usage is missing/zero (e.g. older SDK responses).
+      const usage = readUsage(result.runContext.usage);
+      const hasUsage = usage.totalTokens > 0 || usage.inputTokens > 0;
+      const tokens = hasUsage
+        ? usage
+        : (() => {
+            const inputTokens = encode(`${INSTRUCTIONS}\n\n${userInput}`).length;
+            const outputTokens = encode(
+              JSON.stringify(result.finalOutput ?? ""),
+            ).length;
+            return {
+              inputTokens,
+              cachedInputTokens: 0,
+              outputTokens,
+              totalTokens: inputTokens + outputTokens,
+            };
+          })();
+      const tokenSource: "usage" | "tokenizer" = hasUsage
+        ? "usage"
+        : "tokenizer";
 
       const output = formattedBookSchema.parse(result.finalOutput);
       const blocks = toBookBlocks(output.blocks);
       const validation = validateBlocks(transcript, blocks);
+
+      await logRequest({
+        status: "success",
+        tokens,
+        tokenSource,
+        durationMs: Date.now() - startedAt,
+      });
 
       await ctx.runMutation(internal.books.completeBook, {
         jobId: args.jobId,
@@ -365,6 +465,23 @@ export const formatBook = internalAction({
       });
       return null;
     } catch (error) {
+      // The request may have completed (and cost money) before a parse/validate
+      // step threw. Estimate token usage with the tokenizer so the spend is
+      // still captured.
+      const inputTokens = encode(`${INSTRUCTIONS}\n\n${userInput}`).length;
+      await logRequest({
+        status: "failed",
+        tokens: {
+          inputTokens,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          totalTokens: inputTokens,
+        },
+        tokenSource: "tokenizer",
+        durationMs: Date.now() - startedAt,
+        errorMessage:
+          error instanceof Error ? error.message : "Book formatting failed.",
+      });
       await completeWithFallback(
         `OpenAI formatting failed; used transcript-preserving fallback. ${error instanceof Error ? error.message : "Book formatting failed."
         }`,

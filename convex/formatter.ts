@@ -329,7 +329,7 @@ export const formatBook = internalAction({
 
       const agent = new Agent({
         name: "Readabook book editor",
-        model: process.env.READABOOK_OPENAI_MODEL ?? "gpt-5.2",
+        model: process.env.READABOOK_OPENAI_MODEL ?? "gpt-5.5",
         outputType: formattedBookSchema,
         instructions: INSTRUCTIONS,
       });
@@ -366,8 +366,7 @@ export const formatBook = internalAction({
       return null;
     } catch (error) {
       await completeWithFallback(
-        `OpenAI formatting failed; used transcript-preserving fallback. ${
-          error instanceof Error ? error.message : "Book formatting failed."
+        `OpenAI formatting failed; used transcript-preserving fallback. ${error instanceof Error ? error.message : "Book formatting failed."
         }`,
       );
       return null;

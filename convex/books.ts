@@ -415,6 +415,13 @@ export const getFormattingPayload = internalQuery({
       book,
       video,
       transcriptText: chunks.map((chunk) => chunk.text).join("\n\n"),
+      // Ordered, numbered transcript chunks. The two-pass formatter feeds these
+      // to the outline pass (numbered) and slices verbatim text by index for the
+      // per-chapter fill pass.
+      transcriptChunks: chunks.map((chunk) => ({
+        index: chunk.index,
+        text: chunk.text,
+      })),
     };
   },
 });
@@ -515,14 +522,11 @@ export const failOrRetryFormatting = internalMutation({
 // scraper, and Supadata can transiently fail too. Rather than surfacing a hard
 // failure to the user, retry the whole transcript stage with exponential
 // backoff for a generous number of attempts before giving up.
-const MAX_TRANSCRIPT_ATTEMPTS = 8;
+const MAX_TRANSCRIPT_ATTEMPTS = 500;
 
-function transcriptRetryDelayMs(attempts: number): number {
-  // attempts is the count *after* the just-failed try (1-based). Backoff:
-  // 15s, 30s, 60s, 120s, ... capped at 5 minutes.
-  const base = 15_000;
-  const delay = base * 2 ** (attempts - 1);
-  return Math.min(delay, 5 * 60_000);
+function transcriptRetryDelayMs(_attempts: number): number {
+  // Retry quickly on a fixed interval.
+  return 500;
 }
 
 export const failOrRetryTranscript = internalMutation({

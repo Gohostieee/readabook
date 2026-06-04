@@ -152,8 +152,8 @@ export function Diagram({ data }: { data: DiagramData }) {
       );
 
     case "quadrant": {
-      const [xLo, xHi] = data.axes.x;
-      const [yLo, yHi] = data.axes.y;
+      const { low: xLo, high: xHi } = data.axes.x;
+      const { low: yLo, high: yHi } = data.axes.y;
       return (
         <Frame>
           <div className="relative">

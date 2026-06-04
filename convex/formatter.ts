@@ -60,11 +60,6 @@ const statData = z.object({
 
 const quoteData = z.object({ attribution: z.string().nullable() });
 
-const chapterData = z.object({
-  act: z.string().nullable(),
-  summary: z.string().nullable(),
-});
-
 const paragraphData = z.object({ dropcap: z.boolean().nullable() });
 
 const diagramData = z.discriminatedUnion("variant", [
@@ -105,9 +100,12 @@ const diagramData = z.discriminatedUnion("variant", [
   }),
   z.object({
     variant: z.literal("quadrant"),
+    // OpenAI structured outputs reject JSON-schema tuples (`items` as an array
+    // of schemas), so each axis is a fixed-key object instead of a [low, high]
+    // tuple.
     axes: z.object({
-      x: z.tuple([z.string(), z.string()]),
-      y: z.tuple([z.string(), z.string()]),
+      x: z.object({ low: z.string(), high: z.string() }),
+      y: z.object({ low: z.string(), high: z.string() }),
     }),
     items: z
       .array(z.object({ label: z.string(), x: z.number(), y: z.number() }))
@@ -115,14 +113,10 @@ const diagramData = z.discriminatedUnion("variant", [
   }),
 ]);
 
-const block = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("title"), text: z.string() }),
-  z.object({ kind: z.literal("subtitle"), text: z.string() }),
-  z.object({
-    kind: z.literal("chapter"),
-    text: z.string(),
-    data: chapterData.nullable(),
-  }),
+// Body blocks the per-chapter FILL pass may emit. `title`/`subtitle`/`chapter`
+// are NOT here — those are produced by the OUTLINE pass and assembled in code,
+// so the fill model only ever generates content blocks within a chapter.
+const bodyBlock = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("section"), text: z.string() }),
   z.object({
     kind: z.literal("paragraph"),
@@ -170,39 +164,55 @@ const block = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("break"), text: z.string() }),
 ]);
 
-const formattedBookSchema = z.object({
+const categoryEnum = z.enum([
+  "fiction",
+  "nonfiction",
+  "education",
+  "business",
+  "science",
+  "technology",
+  "history",
+  "biography",
+  "philosophy",
+  "health",
+  "culture",
+  "news",
+  "tutorial",
+  "conversation",
+  "entertainment",
+  "other",
+]);
+
+// PASS 1 output: book-level metadata + chapter boundaries referencing numbered
+// transcript chunks. No verbatim body text, which keeps this call cheap.
+const outlineSchema = z.object({
   title: z.string().min(1),
   subtitle: z.string().nullable(),
-  category: z.enum([
-    "fiction",
-    "nonfiction",
-    "education",
-    "business",
-    "science",
-    "technology",
-    "history",
-    "biography",
-    "philosophy",
-    "health",
-    "culture",
-    "news",
-    "tutorial",
-    "conversation",
-    "entertainment",
-    "other",
-  ]),
+  category: categoryEnum,
   topics: z.array(z.string()).max(12),
-  readingMinutes: z.number().nullable(),
-  blocks: z.array(block).min(3),
-  preservationScore: z.number().min(0).max(1),
-  warnings: z.array(z.string()),
+  chapters: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        act: z.string().nullable(),
+        summary: z.string().nullable(),
+        startChunk: z.number().int().min(0),
+        endChunk: z.number().int().min(0),
+      }),
+    )
+    .min(1),
 });
 
-type FormattedOutput = z.infer<typeof formattedBookSchema>;
+// PASS 2 output: the body blocks for a single chapter's transcript span.
+const fillSchema = z.object({ blocks: z.array(bodyBlock).min(1) });
+
+type FillOutput = z.infer<typeof fillSchema>;
+type OutlineOutput = z.infer<typeof outlineSchema>;
+type OutlineChapter = OutlineOutput["chapters"][number];
 
 // Normalize the model output (which uses `null` for absent fields) into the
 // loosely-typed BookBlock[] we persist. Strips nulls out of `data`.
-function toBookBlocks(blocks: FormattedOutput["blocks"]): BookBlock[] {
+function toBookBlocks(blocks: FillOutput["blocks"]): BookBlock[] {
   return blocks.map((b) => {
     const data = "data" in b ? b.data : undefined;
     return {
@@ -369,7 +379,13 @@ export const formatBook = internalAction({
         outputTokens: entry.tokens.outputTokens,
         totalTokens: entry.tokens.totalTokens,
         tokenSource: entry.tokenSource,
-        costUsd: computeCostUsd({ model, ...entry.tokens }),
+        // A failed request was rejected/aborted before billing, so the tokens
+        // above are only a tokenizer estimate for visibility — record $0 spend
+        // so the dashboard totals reflect what was actually charged.
+        costUsd:
+          entry.status === "failed"
+            ? 0
+            : computeCostUsd({ model, ...entry.tokens }),
         durationMs: entry.durationMs,
         errorMessage: entry.errorMessage ?? null,
         bookId,

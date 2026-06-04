@@ -188,6 +188,30 @@ export default defineSchema({
     jobId: v.union(v.id("bookJobs"), v.null()),
     userId: v.union(v.id("users"), v.null()),
     createdAt: v.number(),
+    // Optional per-call breakdown for multi-call formatting runs (two-pass:
+    // one outline call + N chapter fill calls). Absent on single-call runs and
+    // older rows. The aggregated row above sums these; this is for debugging.
+    callBreakdown: v.optional(
+      v.array(
+        v.object({
+          phase: v.union(
+            v.literal("outline"),
+            v.literal("chapter"),
+            v.literal("single"),
+          ),
+          index: v.optional(v.number()),
+          status: v.union(
+            v.literal("success"),
+            v.literal("retried"),
+            v.literal("fallback"),
+            v.literal("failed"),
+          ),
+          inputTokens: v.number(),
+          outputTokens: v.number(),
+          durationMs: v.number(),
+        }),
+      ),
+    ),
   })
     .index("by_bookId", ["bookId"])
     .index("by_jobId", ["jobId"])

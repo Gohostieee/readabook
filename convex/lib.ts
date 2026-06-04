@@ -52,7 +52,10 @@ export type DiagramData =
   | { variant: "cycle"; nodes: { label: string }[] }
   | {
       variant: "quadrant";
-      axes: { x: [string, string]; y: [string, string] };
+      axes: {
+        x: { low: string; high: string };
+        y: { low: string; high: string };
+      };
       items: { label: string; x: number; y: number }[];
     };
 
@@ -248,17 +251,24 @@ export function blocksToPlainText(blocks: BookBlock[]): string {
   return parts.filter(Boolean).join("\n\n");
 }
 
-export function fallbackBookFromTranscript(title: string, transcript: string) {
-  const paragraphs = cleanTranscriptText(transcript)
+// Plain-paragraph blocks for a span of transcript text. Used as the per-chapter
+// fallback in the two-pass formatter when a chapter's fill call fails: the
+// spoken words are fully preserved, only rich structure is lost. The caller is
+// responsible for any surrounding chapter/section blocks.
+export function paragraphBlocksFromText(text: string): BookBlock[] {
+  return cleanTranscriptText(text)
     .split(/\n{2,}/)
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((part) => ({ kind: "paragraph" as const, text: part }));
+}
 
+export function fallbackBookFromTranscript(title: string, transcript: string) {
   const blocks: BookBlock[] = [
     { kind: "title", text: title || "Untitled Readabook" },
     { kind: "subtitle", text: "A transcript-formatted book" },
     { kind: "chapter", text: "Transcript" },
-    ...paragraphs.map((text) => ({ kind: "paragraph" as const, text })),
+    ...paragraphBlocksFromText(transcript),
   ];
 
   return {

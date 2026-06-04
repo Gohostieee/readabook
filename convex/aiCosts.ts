@@ -139,6 +139,27 @@ export const logAiRequest = internalMutation({
     bookId: v.union(v.id("books"), v.null()),
     jobId: v.union(v.id("bookJobs"), v.null()),
     userId: v.union(v.id("users"), v.null()),
+    callBreakdown: v.optional(
+      v.array(
+        v.object({
+          phase: v.union(
+            v.literal("outline"),
+            v.literal("chapter"),
+            v.literal("single"),
+          ),
+          index: v.optional(v.number()),
+          status: v.union(
+            v.literal("success"),
+            v.literal("retried"),
+            v.literal("fallback"),
+            v.literal("failed"),
+          ),
+          inputTokens: v.number(),
+          outputTokens: v.number(),
+          durationMs: v.number(),
+        }),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("aiRequestLogs", {

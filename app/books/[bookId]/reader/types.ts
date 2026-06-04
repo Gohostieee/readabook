@@ -55,7 +55,10 @@ export type DiagramData =
   | { variant: "cycle"; nodes: { label: string }[] }
   | {
       variant: "quadrant";
-      axes: { x: [string, string]; y: [string, string] };
+      axes: {
+        x: { low: string; high: string };
+        y: { low: string; high: string };
+      };
       items: { label: string; x: number; y: number }[];
     };
 

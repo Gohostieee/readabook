@@ -177,6 +177,7 @@ export default function DashboardPage() {
                     <TableHead className="text-right">Cost</TableHead>
                     <TableHead className="text-right">Duration</TableHead>
                     <TableHead>Source</TableHead>
+                    <TableHead>Error</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -205,6 +206,18 @@ export default function DashboardPage() {
                         {num(row.durationMs)}ms
                       </TableCell>
                       <TableCell className="text-muted-foreground">{row.tokenSource}</TableCell>
+                      <TableCell className="max-w-md">
+                        {row.errorMessage ? (
+                          <span
+                            className="block truncate text-destructive"
+                            title={row.errorMessage}
+                          >
+                            {row.errorMessage}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -274,7 +274,21 @@ function Measurer({
     if (!el) return;
     const measure = () => {
       const children = Array.from(el.children) as HTMLElement[];
-      onMeasured(children.map((c) => c.offsetHeight));
+      if (children.length === 0) {
+        onMeasured([]);
+        return;
+      }
+      // Measure the true flow height each block consumes, *including* the
+      // vertical margins between blocks. offsetHeight excludes margins (and
+      // they collapse through a wrapper), which made pagination pack too many
+      // blocks per page — overflowing the fixed-height page. Using the gap
+      // between successive block tops captures (collapsed) margins exactly.
+      const tops = children.map((c) => c.getBoundingClientRect().top);
+      const containerBottom = el.getBoundingClientRect().bottom;
+      const heights = children.map((c, i) =>
+        (i + 1 < children.length ? tops[i + 1] : containerBottom) - tops[i],
+      );
+      onMeasured(heights);
     };
     measure();
     // Re-measure once webfonts settle (serif metrics shift heights).
@@ -295,11 +309,13 @@ function Measurer({
       className="pointer-events-none invisible fixed left-0 top-0 -z-50"
       style={{ width }}
     >
-      <div ref={ref} className="reader-flow">
+      {/* Mirror PageView's container exactly (reader-flow + overflow-hidden
+          establishes the same block-formatting context) so margins collapse
+          identically and measured heights match what's rendered. Each Block
+          renders a single root element, so children map 1:1 to blocks. */}
+      <div ref={ref} className="reader-flow overflow-hidden">
         {blocks.map((block, i) => (
-          <div key={i}>
-            <Block block={block} />
-          </div>
+          <Block key={i} block={block} />
         ))}
       </div>
     </div>

@@ -63,7 +63,11 @@ const quoteData = z.object({ attribution: z.string().nullable() });
 
 const paragraphData = z.object({ dropcap: z.boolean().nullable() });
 
-const diagramData = z.discriminatedUnion("variant", [
+// NOTE: `z.union` (not `z.discriminatedUnion`) — the OpenAI Agents SDK renders
+// discriminated unions as JSON-schema `oneOf`, which OpenAI structured outputs
+// reject ("'oneOf' is not permitted"). A plain union renders as `anyOf`, which
+// is accepted; the `variant`/`kind` literals still steer the model correctly.
+const diagramData = z.union([
   z.object({
     variant: z.literal("flow"),
     steps: z
@@ -117,7 +121,8 @@ const diagramData = z.discriminatedUnion("variant", [
 // Body blocks the per-chapter FILL pass may emit. `title`/`subtitle`/`chapter`
 // are NOT here — those are produced by the OUTLINE pass and assembled in code,
 // so the fill model only ever generates content blocks within a chapter.
-const bodyBlock = z.discriminatedUnion("kind", [
+// `z.union` rather than `z.discriminatedUnion` — see the diagramData note above.
+const bodyBlock = z.union([
   z.object({ kind: z.literal("section"), text: z.string() }),
   z.object({
     kind: z.literal("paragraph"),
@@ -453,6 +458,55 @@ async function runStructured<S extends z.ZodObject<z.ZodRawShape>>(opts: {
   };
 }
 
+// Flatten an unknown thrown value into a single rich line that surfaces the
+// detail the SDK normally buries: the OpenAI/Agents API error carries the real
+// reason (e.g. a 400 schema rejection) under `status`/`error`/`response`, and a
+// wrapping Error often hides it under `cause`. `Error.message` alone usually
+// loses all of that — so we walk every useful field.
+function describeError(error: unknown, depth = 0): string {
+  if (depth > 4) return "…";
+  if (!(error instanceof Error)) {
+    if (typeof error === "string") return error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+
+  const parts: string[] = [`${error.name}: ${error.message}`];
+  const extra = error as unknown as Record<string, unknown>;
+
+  // Scalar API-error fields (openai/@openai/agents APIError shape).
+  for (const key of [
+    "status",
+    "code",
+    "type",
+    "param",
+    "requestID",
+    "request_id",
+  ]) {
+    const value = extra[key];
+    if (value != null) parts.push(`${key}=${String(value)}`);
+  }
+
+  // The response body holds the human-readable reason for 4xx errors.
+  const body = extra.error ?? extra.response ?? extra.body;
+  if (body != null && body !== error) {
+    try {
+      parts.push(`body=${JSON.stringify(body)}`);
+    } catch {
+      /* non-serializable body — skip */
+    }
+  }
+
+  if (error.cause != null && error.cause !== error) {
+    parts.push(`cause=(${describeError(error.cause, depth + 1)})`);
+  }
+
+  return parts.join(" | ");
+}
+
 // Estimate the cost of a model call that threw before we could read usage (the
 // request usually completed and billed before a parse/validate step failed).
 function estimateFailedTokens(instructions: string, input: string): Tokens {
@@ -744,10 +798,11 @@ export const formatBook = internalAction({
                 error: null as string | null,
               };
             } catch (err) {
-              lastError =
-                err instanceof Error
-                  ? err.message
-                  : "Chapter formatting failed.";
+              lastError = describeError(err);
+              console.error(
+                `[formatBook] chapter ${index + 1} attempt ${attempt + 1} failed (book=${bookId}, model=${model}): ${lastError}`,
+                err,
+              );
               // The failed attempt usually billed before parse threw; estimate.
               addTokens(chTokens, estimateFailedTokens(FILL_INSTRUCTIONS, fillInput));
             }
@@ -833,13 +888,21 @@ export const formatBook = internalAction({
       if (agg.totalTokens === 0) {
         addTokens(agg, estimateFailedTokens(OUTLINE_INSTRUCTIONS, outlineInput));
       }
+      const detail = describeError(error);
+      // Emit the full reason to the Convex log stream so it's visible in the
+      // dashboard logs, not just buried in the cost ledger's errorMessage.
+      console.error(
+        `[formatBook] FAILED (job=${args.jobId}, book=${bookId}, model=${model}, phase=${
+          breakdown.length === 0 ? "outline" : "assembly"
+        }): ${detail}`,
+        error,
+      );
       await logRequest({
         status: "failed",
         tokens: agg,
         tokenSource: usedTokenizer ? "tokenizer" : "usage",
         durationMs: Date.now() - startedAt,
-        errorMessage:
-          error instanceof Error ? error.message : "Book formatting failed.",
+        errorMessage: detail,
         callBreakdown: breakdown.length > 0 ? breakdown : undefined,
       });
       await completeWithFallback(

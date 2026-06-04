@@ -47,6 +47,42 @@ const statusValidator = v.union(
   v.literal("failed"),
 );
 
+const contentCategoryValidator = v.union(
+  v.literal("fiction"),
+  v.literal("nonfiction"),
+  v.literal("education"),
+  v.literal("business"),
+  v.literal("science"),
+  v.literal("technology"),
+  v.literal("history"),
+  v.literal("biography"),
+  v.literal("philosophy"),
+  v.literal("health"),
+  v.literal("culture"),
+  v.literal("news"),
+  v.literal("tutorial"),
+  v.literal("conversation"),
+  v.literal("entertainment"),
+  v.literal("other"),
+);
+
+function buildSearchText(args: {
+  title: string;
+  subtitle: string | null;
+  blocks: BookBlock[];
+  topics: string[];
+}) {
+  return [
+    args.title,
+    args.subtitle ?? "",
+    args.topics.join(" "),
+    blocksToPlainText(args.blocks),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 900_000);
+}
+
 export const submitVideo = mutation({
   args: {
     url: v.string(),
@@ -102,6 +138,9 @@ export const submitVideo = mutation({
         transcriptPreview: "",
         transcriptChecksum: null,
         language: preferredLang,
+        category: video.category,
+        topics: [],
+        searchText: "",
         preservationScore: null,
         warnings: [],
         completedAt: null,
@@ -120,6 +159,9 @@ export const submitVideo = mutation({
         subtitle: null,
         markup: "",
         blocks: [],
+        category: video.category,
+        topics: [],
+        searchText: "",
         preservationScore: null,
         warnings: [],
         completedAt: null,
@@ -390,6 +432,8 @@ export const completeBook = internalMutation({
       }),
     ),
     readingMinutes: v.optional(v.number()),
+    category: contentCategoryValidator,
+    topics: v.array(v.string()),
     preservationScore: v.number(),
     warnings: v.array(v.string()),
   },
@@ -407,6 +451,14 @@ export const completeBook = internalMutation({
       markup: blocksToPlainText(blocks),
       blocks: args.blocks,
       readingMinutes: args.readingMinutes,
+      category: args.category,
+      topics: args.topics,
+      searchText: buildSearchText({
+        title: args.title,
+        subtitle: args.subtitle,
+        blocks,
+        topics: args.topics,
+      }),
       preservationScore: args.preservationScore,
       warnings: args.warnings,
       completedAt: Date.now(),
@@ -516,17 +568,69 @@ export const updateVideoMetadata = internalMutation({
   args: {
     videoId: v.id("videos"),
     title: v.union(v.string(), v.null()),
+    description: v.union(v.string(), v.null()),
     channelName: v.union(v.string(), v.null()),
+    channelId: v.union(v.string(), v.null()),
+    authorUsername: v.union(v.string(), v.null()),
+    authorAvatarUrl: v.union(v.string(), v.null()),
+    authorVerified: v.union(v.boolean(), v.null()),
     thumbnailUrl: v.union(v.string(), v.null()),
     durationSeconds: v.union(v.number(), v.null()),
+    width: v.union(v.number(), v.null()),
+    height: v.union(v.number(), v.null()),
+    platform: v.union(v.string(), v.null()),
+    sourceType: v.union(v.string(), v.null()),
+    viewCount: v.union(v.number(), v.null()),
+    likeCount: v.union(v.number(), v.null()),
+    commentCount: v.union(v.number(), v.null()),
+    shareCount: v.union(v.number(), v.null()),
+    tags: v.array(v.string()),
+    category: contentCategoryValidator,
+    publishedAt: v.union(v.string(), v.null()),
+    rawMetadata: v.any(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.videoId, {
       title: args.title,
+      description: args.description,
       channelName: args.channelName,
+      channelId: args.channelId,
+      authorUsername: args.authorUsername,
+      authorAvatarUrl: args.authorAvatarUrl,
+      authorVerified: args.authorVerified,
       thumbnailUrl: args.thumbnailUrl,
       durationSeconds: args.durationSeconds,
+      width: args.width,
+      height: args.height,
+      platform: args.platform ?? undefined,
+      sourceType: args.sourceType ?? undefined,
+      viewCount: args.viewCount,
+      likeCount: args.likeCount,
+      commentCount: args.commentCount,
+      shareCount: args.shareCount,
+      tags: args.tags,
+      category: args.category,
+      publishedAt: args.publishedAt,
+      rawMetadata: args.rawMetadata,
     });
+
+    if (args.title) {
+      const books = await ctx.db
+        .query("books")
+        .withIndex("by_videoId", (q) => q.eq("videoId", args.videoId))
+        .take(50);
+      for (const book of books) {
+        if (
+          book.status !== "completed" &&
+          (book.title === "Queued Readabook" || !book.title.trim())
+        ) {
+          await ctx.db.patch(book._id, {
+            title: args.title,
+            category: args.category,
+          });
+        }
+      }
+    }
   },
 });
 

@@ -30,6 +30,25 @@ const bookBlockKind = v.union(
   v.literal("break"),
 );
 
+const contentCategory = v.union(
+  v.literal("fiction"),
+  v.literal("nonfiction"),
+  v.literal("education"),
+  v.literal("business"),
+  v.literal("science"),
+  v.literal("technology"),
+  v.literal("history"),
+  v.literal("biography"),
+  v.literal("philosophy"),
+  v.literal("health"),
+  v.literal("culture"),
+  v.literal("news"),
+  v.literal("tutorial"),
+  v.literal("conversation"),
+  v.literal("entertainment"),
+  v.literal("other"),
+);
+
 export default defineSchema({
   users: defineTable({
     tokenIdentifier: v.string(),
@@ -43,10 +62,27 @@ export default defineSchema({
     youtubeVideoId: v.string(),
     url: v.string(),
     canonicalUrl: v.string(),
+    platform: v.optional(v.string()),
+    sourceType: v.optional(v.string()),
     title: v.union(v.string(), v.null()),
+    description: v.optional(v.union(v.string(), v.null())),
     channelName: v.union(v.string(), v.null()),
+    channelId: v.optional(v.union(v.string(), v.null())),
+    authorUsername: v.optional(v.union(v.string(), v.null())),
+    authorAvatarUrl: v.optional(v.union(v.string(), v.null())),
+    authorVerified: v.optional(v.union(v.boolean(), v.null())),
     thumbnailUrl: v.union(v.string(), v.null()),
     durationSeconds: v.union(v.number(), v.null()),
+    width: v.optional(v.union(v.number(), v.null())),
+    height: v.optional(v.union(v.number(), v.null())),
+    viewCount: v.optional(v.union(v.number(), v.null())),
+    likeCount: v.optional(v.union(v.number(), v.null())),
+    commentCount: v.optional(v.union(v.number(), v.null())),
+    shareCount: v.optional(v.union(v.number(), v.null())),
+    tags: v.optional(v.array(v.string())),
+    category: v.optional(contentCategory),
+    publishedAt: v.optional(v.union(v.string(), v.null())),
+    rawMetadata: v.optional(v.any()),
     preferredLang: v.string(),
   }).index("by_youtubeVideoId", ["youtubeVideoId"]),
 
@@ -72,6 +108,9 @@ export default defineSchema({
     transcriptPreview: v.string(),
     transcriptChecksum: v.union(v.string(), v.null()),
     language: v.string(),
+    category: v.optional(contentCategory),
+    topics: v.optional(v.array(v.string())),
+    searchText: v.optional(v.string()),
     preservationScore: v.union(v.number(), v.null()),
     warnings: v.array(v.string()),
     completedAt: v.union(v.number(), v.null()),
@@ -80,7 +119,12 @@ export default defineSchema({
   })
     .index("by_videoId", ["videoId"])
     .index("by_bookKey", ["bookKey"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_category", ["category"])
+    .searchIndex("search_books", {
+      searchField: "searchText",
+      filterFields: ["category", "status"],
+    }),
 
   transcriptChunks: defineTable({
     bookId: v.id("books"),

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 
 // ---------------------------------------------------------------------------
 // Model pricing
@@ -53,6 +53,71 @@ export function computeCostUsd(args: {
   // Round to 6 decimals (micro-dollars) to avoid float dust.
   return Math.round(cost * 1_000_000) / 1_000_000;
 }
+
+// Password for the internal cost dashboard. Configurable via env var; defaults
+// to the agreed-upon password.
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD ?? "muttley";
+
+/**
+ * Aggregated cost data for the internal /dashboard route. The password is
+ * verified server-side, so without it no cost data is ever returned.
+ */
+export const getCostSummary = query({
+  args: { password: v.string() },
+  handler: async (ctx, args) => {
+    if (args.password !== DASHBOARD_PASSWORD) {
+      return { authorized: false as const };
+    }
+
+    // Most recent requests first. Bounded read keeps this efficient as the
+    // ledger grows; widen the cap (or paginate) if the table gets large.
+    const logs = await ctx.db
+      .query("aiRequestLogs")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(500);
+
+    let totalCostUsd = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    const byStatus = { success: 0, fallback: 0, failed: 0 };
+
+    for (const log of logs) {
+      totalCostUsd += log.costUsd;
+      totalInputTokens += log.inputTokens;
+      totalOutputTokens += log.outputTokens;
+      byStatus[log.status] += 1;
+    }
+
+    return {
+      authorized: true as const,
+      totals: {
+        requests: logs.length,
+        costUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        byStatus,
+      },
+      recent: logs.slice(0, 100).map((log) => ({
+        id: log._id,
+        createdAt: log.createdAt,
+        model: log.model,
+        operation: log.operation,
+        status: log.status,
+        inputTokens: log.inputTokens,
+        cachedInputTokens: log.cachedInputTokens,
+        outputTokens: log.outputTokens,
+        totalTokens: log.totalTokens,
+        tokenSource: log.tokenSource,
+        costUsd: log.costUsd,
+        durationMs: log.durationMs,
+        errorMessage: log.errorMessage,
+        bookId: log.bookId,
+        userId: log.userId,
+      })),
+    };
+  },
+});
 
 export const logAiRequest = internalMutation({
   args: {

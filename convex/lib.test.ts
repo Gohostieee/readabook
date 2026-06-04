@@ -3,6 +3,7 @@ import {
   type BookBlock,
   blocksToMarkup,
   blocksToPlainText,
+  cleanTranscriptText,
   fallbackBookFromTranscript,
   parseBookMarkup,
 } from "./lib";
@@ -45,6 +46,34 @@ describe("book markup helpers", () => {
     );
     expect(blocksToMarkup(parsed)).toContain(
       "Second paragraph also keeps the original spoken words.",
+    );
+  });
+
+  test("removes transcript turn markers from fallback paragraphs", () => {
+    const transcript =
+      "Would you criticize President Biden? >> Look, we put the image on all kinds of things. >> Typically, no.";
+
+    const book = fallbackBookFromTranscript("Video Title", transcript);
+
+    expect(blocksToPlainText(book.blocks)).not.toContain(">>");
+    expect(book.blocks).toEqual([
+      { kind: "title", text: "Video Title" },
+      { kind: "subtitle", text: "A transcript-formatted book" },
+      { kind: "chapter", text: "Transcript" },
+      { kind: "paragraph", text: "Would you criticize President Biden?" },
+      {
+        kind: "paragraph",
+        text: "Look, we put the image on all kinds of things.",
+      },
+      { kind: "paragraph", text: "Typically, no." },
+    ]);
+  });
+});
+
+describe("cleanTranscriptText", () => {
+  test("turns transcript speaker markers into paragraph boundaries", () => {
+    expect(cleanTranscriptText("First line. >> Second line.")).toBe(
+      "First line.\n\nSecond line.",
     );
   });
 });

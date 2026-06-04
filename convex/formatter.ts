@@ -173,6 +173,25 @@ const block = z.discriminatedUnion("kind", [
 const formattedBookSchema = z.object({
   title: z.string().min(1),
   subtitle: z.string().nullable(),
+  category: z.enum([
+    "fiction",
+    "nonfiction",
+    "education",
+    "business",
+    "science",
+    "technology",
+    "history",
+    "biography",
+    "philosophy",
+    "health",
+    "culture",
+    "news",
+    "tutorial",
+    "conversation",
+    "entertainment",
+    "other",
+  ]),
+  topics: z.array(z.string()).max(12),
   readingMinutes: z.number().nullable(),
   blocks: z.array(block).min(3),
   preservationScore: z.number().min(0).max(1),
@@ -286,6 +305,10 @@ const INSTRUCTIONS = [
   "BALANCE: Prefer many faithful blocks over compression. Use rich kinds when the content supports them, but do not force structure onto plain narration — most blocks will be paragraphs. The `text` field of every block MUST contain the spoken words for that block (for dialogue/list/diagram, concatenate the spoken content).",
   "",
   "Also return an honest `preservationScore` (0-1) estimate and any `warnings`. Estimate `readingMinutes`.",
+  "",
+  "DISCOVERY METADATA:",
+  "- Return exactly one broad `category` from the provided enum.",
+  "- Return up to 12 concise `topics` that future search can match against. Prefer named people, books, concepts, methods, genres, and subject areas that are actually present in the source.",
 ].join("\n");
 
 // Pull a normalized token breakdown out of the Agents SDK usage object. Cached
@@ -372,6 +395,8 @@ export const formatBook = internalAction({
         subtitle: "A transcript-formatted book",
         blocks: fallback.blocks,
         readingMinutes: estimateReadingMinutes(fallback.blocks),
+        category: payload.video?.category ?? "other",
+        topics: payload.video?.tags?.slice(0, 12) ?? [],
         preservationScore: validation.preservation,
         warnings: [warning],
       });
@@ -379,6 +404,10 @@ export const formatBook = internalAction({
 
     const userInput = [
       `Video title: ${title}`,
+      `Video description: ${payload.video?.description ?? ""}`,
+      `Video tags: ${(payload.video?.tags ?? []).join(", ")}`,
+      `Video channel: ${payload.video?.channelName ?? ""}`,
+      `Existing metadata category: ${payload.video?.category ?? "other"}`,
       `Language: ${payload.book.language}`,
       "Format the transcript below into a structured readabook. Preserve the wording; choose the right block kinds for what is actually happening.",
       "Transcript:",
@@ -457,6 +486,8 @@ export const formatBook = internalAction({
         blocks,
         readingMinutes:
           output.readingMinutes ?? estimateReadingMinutes(blocks),
+        category: output.category,
+        topics: output.topics.map((topic) => topic.trim()).filter(Boolean),
         preservationScore: Math.max(
           output.preservationScore,
           validation.preservation,

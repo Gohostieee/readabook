@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { fetchTranscript as fetchYoutubeTranscript } from "youtube-transcript";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import { cleanTranscriptText } from "./lib";
 
 type SupadataTranscriptChunk = {
   text: string;
@@ -12,6 +13,98 @@ type SupadataTranscriptChunk = {
   duration?: number;
   lang?: string;
 };
+
+type ContentCategory =
+  | "fiction"
+  | "nonfiction"
+  | "education"
+  | "business"
+  | "science"
+  | "technology"
+  | "history"
+  | "biography"
+  | "philosophy"
+  | "health"
+  | "culture"
+  | "news"
+  | "tutorial"
+  | "conversation"
+  | "entertainment"
+  | "other";
+
+type SupadataMetadata = {
+  platform?: string;
+  type?: string;
+  id?: string;
+  url?: string;
+  title?: string | null;
+  description?: string | null;
+  author?: {
+    username?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    verified?: boolean | null;
+  };
+  stats?: {
+    views?: number | null;
+    likes?: number | null;
+    comments?: number | null;
+    shares?: number | null;
+  };
+  media?: {
+    type?: string;
+    duration?: number;
+    width?: number;
+    height?: number;
+    thumbnailUrl?: string;
+    items?: Array<{ thumbnailUrl?: string; width?: number; height?: number }>;
+  };
+  tags?: string[];
+  createdAt?: string | null;
+  thumbnail?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  channel?: { id?: string | null; name?: string | null };
+  additionalData?: Record<string, unknown>;
+};
+
+const categoryKeywords: Array<[ContentCategory, string[]]> = [
+  ["tutorial", ["how to", "tutorial", "guide", "lesson", "walkthrough"]],
+  ["technology", ["ai", "software", "coding", "programming", "computer", "tech"]],
+  ["science", ["science", "physics", "biology", "chemistry", "space"]],
+  ["business", ["business", "startup", "marketing", "sales", "money"]],
+  ["history", ["history", "ancient", "war", "empire", "century"]],
+  ["biography", ["biography", "memoir", "life of", "interview with"]],
+  ["philosophy", ["philosophy", "meaning", "ethics", "stoic"]],
+  ["health", ["health", "fitness", "nutrition", "medical", "therapy"]],
+  ["news", ["news", "breaking", "politics", "election", "today"]],
+  ["conversation", ["podcast", "interview", "conversation", "q&a"]],
+  ["education", ["education", "learn", "course", "lecture", "explained"]],
+  ["fiction", ["story", "novel", "fiction", "fantasy", "sci-fi"]],
+  ["culture", ["culture", "society", "art", "music", "film"]],
+  ["entertainment", ["comedy", "reaction", "review", "gaming", "show"]],
+];
+
+function inferCategory(meta: SupadataMetadata): ContentCategory {
+  const haystack = [
+    meta.title ?? "",
+    meta.description ?? "",
+    ...(meta.tags ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  for (const [category, keywords] of categoryKeywords) {
+    if (keywords.some((keyword) => haystack.includes(keyword))) {
+      return category;
+    }
+  }
+  return "other";
+}
+
+function jsonSafe(value: unknown) {
+  return JSON.parse(JSON.stringify(value ?? null)) as unknown;
+}
 
 function getSupadataClient() {
   const apiKey = process.env.SUPADATA_API_KEY;
@@ -30,7 +123,7 @@ function normalizeTranscript(result: unknown, fallbackLang: string) {
       language: transcript.lang ?? fallbackLang,
       chunks: transcript.content
         .map((chunk) => ({
-          text: chunk.text.trim(),
+          text: cleanTranscriptText(chunk.text),
           offset: typeof chunk.offset === "number" ? chunk.offset : null,
           duration: typeof chunk.duration === "number" ? chunk.duration : null,
           lang: chunk.lang ?? transcript.lang ?? fallbackLang,
@@ -47,11 +140,12 @@ function normalizeTranscript(result: unknown, fallbackLang: string) {
       .map((text) => text.trim())
       .filter(Boolean)
       .map((text) => ({
-        text,
+        text: cleanTranscriptText(text),
         offset: null,
         duration: null,
         lang: transcript.lang ?? fallbackLang,
-      })),
+      }))
+      .filter((chunk) => chunk.text.length > 0),
   };
 }
 
@@ -61,7 +155,7 @@ async function fetchTranscriptFallback(videoId: string, lang: string) {
     language: lang,
     chunks: transcript
       .map((chunk) => ({
-        text: chunk.text.trim(),
+        text: cleanTranscriptText(chunk.text),
         offset: typeof chunk.offset === "number" ? chunk.offset : null,
         duration: typeof chunk.duration === "number" ? chunk.duration : null,
         lang,
@@ -107,21 +201,55 @@ export const fetchTranscript = internalAction({
       ]);
 
       if (metadata) {
-        const meta = metadata as {
-          title?: string;
-          author?: { displayName?: string; username?: string };
-          thumbnail?: string;
-          thumbnailUrl?: string;
-          duration?: number;
-        };
+        const meta = metadata as SupadataMetadata;
+        const media =
+          meta.media?.type === "carousel" ? meta.media.items?.[0] : meta.media;
+        const mediaDuration =
+          meta.media?.type === "video" &&
+          typeof meta.media.duration === "number"
+            ? meta.media.duration
+            : null;
         await ctx.runMutation(internal.books.updateVideoMetadata, {
           videoId: video._id,
           title: meta.title ?? null,
+          description: meta.description ?? null,
           channelName:
-            meta.author?.displayName ?? meta.author?.username ?? null,
-          thumbnailUrl: meta.thumbnailUrl ?? meta.thumbnail ?? null,
+            meta.author?.displayName ??
+            meta.channel?.name ??
+            meta.author?.username ??
+            null,
+          channelId: meta.channel?.id ?? null,
+          authorUsername: meta.author?.username ?? null,
+          authorAvatarUrl: meta.author?.avatarUrl ?? null,
+          authorVerified:
+            typeof meta.author?.verified === "boolean"
+              ? meta.author.verified
+              : null,
+          thumbnailUrl:
+            media?.thumbnailUrl ?? meta.thumbnailUrl ?? meta.thumbnail ?? null,
           durationSeconds:
-            typeof meta.duration === "number" ? meta.duration : null,
+            mediaDuration ??
+            (typeof meta.duration === "number"
+                ? meta.duration
+                : null),
+          width: typeof media?.width === "number" ? media.width : null,
+          height: typeof media?.height === "number" ? media.height : null,
+          platform: meta.platform ?? null,
+          sourceType: meta.type ?? null,
+          viewCount:
+            typeof meta.stats?.views === "number" ? meta.stats.views : null,
+          likeCount:
+            typeof meta.stats?.likes === "number" ? meta.stats.likes : null,
+          commentCount:
+            typeof meta.stats?.comments === "number"
+              ? meta.stats.comments
+              : null,
+          shareCount:
+            typeof meta.stats?.shares === "number" ? meta.stats.shares : null,
+          tags: meta.tags ?? [],
+          category: inferCategory(meta),
+          publishedAt: meta.createdAt ?? null,
+          rawMetadata: jsonSafe(meta),
         });
       }
 

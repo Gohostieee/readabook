@@ -107,6 +107,13 @@ export function checksum(value: string) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+export function cleanTranscriptText(text: string) {
+  return text
+    .replace(/\s*>>\s*/g, "\n\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function parseBookMarkup(markup: string): BookBlock[] {
   const blocks: BookBlock[] = [];
   let activeKind: BookBlockKind | null = null;
@@ -242,7 +249,7 @@ export function blocksToPlainText(blocks: BookBlock[]): string {
 }
 
 export function fallbackBookFromTranscript(title: string, transcript: string) {
-  const paragraphs = transcript
+  const paragraphs = cleanTranscriptText(transcript)
     .split(/\n{2,}/)
     .map((part) => part.trim())
     .filter(Boolean);

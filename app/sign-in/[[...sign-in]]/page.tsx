@@ -13,10 +13,11 @@ export default function SignInPage() {
       <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <Card className="justify-between bg-primary text-primary-foreground">
           <CardHeader className="gap-6">
-            <div className="grid size-20 place-items-center border border-primary-foreground/40 font-heading text-3xl font-bold">
+            <div className="grid size-20 place-items-center border border-primary-foreground/40 font-terminal text-3xl font-bold worm-cursor">
               rb
             </div>
             <div className="flex flex-col gap-3">
+              <span className="hud-label text-primary-foreground/70">reference terminal · access</span>
               <CardTitle className="font-heading text-5xl leading-tight">
                 Welcome back to your shelf.
               </CardTitle>
@@ -29,6 +30,7 @@ export default function SignInPage() {
         </Card>
         <Card>
           <CardHeader>
+            <span className="hud-label text-worm">signal.authenticate</span>
             <CardTitle className="font-heading text-2xl">Sign in</CardTitle>
             <CardDescription>Open your private readabook shelf.</CardDescription>
           </CardHeader>

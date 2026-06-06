@@ -7,12 +7,7 @@ import { z } from "zod";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { computeCostUsd } from "./aiCosts";
-import {
-  type BookBlock,
-  blocksToPlainText,
-  fallbackBookFromTranscript,
-  paragraphBlocksFromText,
-} from "./lib";
+import { type BookBlock, blocksToPlainText } from "./lib";
 
 // ---------------------------------------------------------------------------
 // Structured output schema
@@ -670,36 +665,22 @@ export const formatBook = internalAction({
       return null;
     }
 
-    const completeWithFallback = async (warning: string) => {
-      const fallback = fallbackBookFromTranscript(title, transcript);
-      const validation = validateBlocks(transcript, fallback.blocks);
-      await ctx.runMutation(internal.books.completeBook, {
-        jobId: args.jobId,
-        title,
-        subtitle: "A transcript-formatted book",
-        blocks: fallback.blocks,
-        readingMinutes: estimateReadingMinutes(fallback.blocks),
-        category: payload.video?.category ?? "other",
-        topics: payload.video?.tags?.slice(0, 12) ?? [],
-        preservationScore: validation.preservation,
-        warnings: [warning],
-      });
-    };
-
     const startedAt = Date.now();
 
     if (!process.env.OPENAI_API_KEY) {
       // No request is made, so cost is zero — but we still record the run.
       await logRequest({
-        status: "fallback",
+        status: "failed",
         tokens: { ...ZERO_TOKENS },
         tokenSource: "tokenizer",
         durationMs: Date.now() - startedAt,
         errorMessage: "OPENAI_API_KEY is not configured.",
       });
-      await completeWithFallback(
-        "OPENAI_API_KEY is not configured; used transcript-preserving fallback formatting.",
-      );
+      await ctx.runMutation(internal.books.failOrRetryFormatting, {
+        jobId: args.jobId,
+        errorMessage:
+          "Book formatting is unavailable right now. Please try again.",
+      });
       return null;
     }
 
@@ -807,16 +788,12 @@ export const formatBook = internalAction({
               addTokens(chTokens, estimateFailedTokens(FILL_INSTRUCTIONS, fillInput));
             }
           }
-          // Both attempts failed → plain-paragraph fallback for this chapter.
-          return {
-            chapter: ch,
-            blocks: paragraphBlocksFromText(chapterText),
-            tokens: chTokens,
-            status: "fallback" as const,
-            durationMs: 0,
-            tokenizer: true,
-            error: lastError,
-          };
+          // Both attempts failed → abort the whole book. We surface the chapter
+          // tokens spent so far so the outer catch can record partial spend.
+          addTokens(agg, chTokens);
+          throw new Error(
+            `Chapter ${index + 1} ("${ch.title}") failed to format: ${lastError}`,
+          );
         },
       );
 
@@ -828,7 +805,6 @@ export const formatBook = internalAction({
       if (outline.output.subtitle) {
         blocks.push({ kind: "subtitle", text: outline.output.subtitle });
       }
-      let anyFallback = false;
       fillResults.forEach((result, index) => {
         const chapterData = stripNulls({
           act: result.chapter.act,
@@ -851,18 +827,12 @@ export const formatBook = internalAction({
           outputTokens: result.tokens.outputTokens,
           durationMs: result.durationMs,
         });
-        if (result.status === "fallback") {
-          anyFallback = true;
-          warnings.push(
-            `Chapter "${result.chapter.title}" used plain fallback formatting: ${result.error}`,
-          );
-        }
       });
 
       const validation = validateBlocks(transcript, blocks);
 
       await logRequest({
-        status: anyFallback ? "fallback" : "success",
+        status: "success",
         tokens: agg,
         tokenSource: usedTokenizer ? "tokenizer" : "usage",
         durationMs: Date.now() - startedAt,
@@ -882,9 +852,10 @@ export const formatBook = internalAction({
       });
       return null;
     } catch (error) {
-      // The outline pass, assembly, or the global preservation check failed.
-      // Capture any spend accrued so far (the outline estimate at minimum) and
-      // fall the whole book back to transcript-preserving formatting.
+      // Any failure — the outline pass, a chapter, assembly, or the global
+      // preservation check — aborts the whole book. Capture any spend accrued
+      // so far (the outline estimate at minimum), then fail the job so the
+      // user is told to try again rather than getting a degraded fallback.
       if (agg.totalTokens === 0) {
         addTokens(agg, estimateFailedTokens(OUTLINE_INSTRUCTIONS, outlineInput));
       }
@@ -905,11 +876,10 @@ export const formatBook = internalAction({
         errorMessage: detail,
         callBreakdown: breakdown.length > 0 ? breakdown : undefined,
       });
-      await completeWithFallback(
-        `OpenAI formatting failed; used transcript-preserving fallback. ${
-          error instanceof Error ? error.message : "Book formatting failed."
-        }`,
-      );
+      await ctx.runMutation(internal.books.failOrRetryFormatting, {
+        jobId: args.jobId,
+        errorMessage: "Book formatting failed. Please try again.",
+      });
       return null;
     }
   },

@@ -19,16 +19,22 @@ export function CoverPage({
 }) {
   return (
     <div className="flex h-full flex-col justify-between">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{language.toUpperCase()}</Badge>
-        {typeof readingMinutes === "number" ? (
-          <Badge variant="outline">{readingMinutes} min read</Badge>
-        ) : null}
-        {typeof preservationScore === "number" ? (
-          <Badge variant="outline">
-            {Math.round(preservationScore * 100)}% verbatim
-          </Badge>
-        ) : null}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2 border-b pb-2">
+          <span className="hud-label text-worm">volume.record</span>
+          <span className="hud-label">on shelf</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="hud-label">{language.toUpperCase()}</Badge>
+          {typeof readingMinutes === "number" ? (
+            <Badge variant="outline" className="hud-label">{readingMinutes} min read</Badge>
+          ) : null}
+          {typeof preservationScore === "number" ? (
+            <Badge variant="outline" className="hud-label">
+              {Math.round(preservationScore * 100)}% verbatim
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex flex-col items-center text-center">
@@ -50,8 +56,8 @@ export function CoverPage({
         ) : null}
       </div>
 
-      <div className="text-center font-sans text-sm uppercase tracking-[0.3em] text-muted-foreground">
-        {channel ?? "A readabook edition"}
+      <div className="hud-label phosphor-glow text-center text-worm">
+        {channel ?? "a readabook edition"}
       </div>
     </div>
   );

@@ -144,9 +144,9 @@ export default function Home() {
           <Card className="relative overflow-hidden border-primary/15 bg-card/95 shadow-sm">
             <CardHeader className="gap-4 sm:grid-cols-[1fr_auto]">
               <div className="flex flex-col gap-3">
-                <Badge variant="secondary" className="w-fit">
+                <Badge variant="secondary" className="hud-label w-fit">
                   <Sparkles data-icon="inline-start" />
-                  Cozy transcript magic
+                  reference terminal · intake
                 </Badge>
                 <div className="flex flex-col gap-3">
                   <CardTitle className="max-w-3xl font-heading text-4xl leading-tight sm:text-5xl">
@@ -159,7 +159,7 @@ export default function Home() {
                 </div>
               </div>
               <CardAction className="hidden sm:block">
-                <div className="grid size-24 place-items-center border bg-muted font-heading text-4xl font-bold text-primary">
+                <div className="grid size-24 place-items-center border bg-muted font-terminal text-4xl font-bold text-worm phosphor-glow">
                   rb
                 </div>
               </CardAction>
@@ -224,6 +224,7 @@ export default function Home() {
                     )}
                   </div>
                   <div className="min-w-0">
+                    <span className="hud-label text-worm">reading log</span>
                     <CardTitle className="font-heading text-xl">{activeTitle}</CardTitle>
                     <CardDescription>
                       {active?.reused
@@ -233,7 +234,7 @@ export default function Home() {
                   </div>
                 </div>
                 <CardAction>
-                  <Badge>{statusCopy[visibleStatus]}</Badge>
+                  <Badge className="hud-label">{statusCopy[visibleStatus]}</Badge>
                 </CardAction>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
@@ -261,9 +262,12 @@ export default function Home() {
 
           <section className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Library className="text-primary" />
-                <h2 className="font-heading text-2xl font-semibold">Your little shelf</h2>
+              <div className="flex flex-col gap-1">
+                <span className="hud-label text-worm">stacks index</span>
+                <div className="flex items-center gap-2">
+                  <Library className="text-primary" />
+                  <h2 className="font-heading text-2xl font-semibold">Your little shelf</h2>
+                </div>
               </div>
               {library.status === "CanLoadMore" ? (
                 <Button variant="outline" onClick={() => library.loadMore(12)}>
@@ -291,30 +295,36 @@ export default function Home() {
               <Empty className="border bg-card/80">
                 <EmptyHeader>
                   <EmptyMedia>
-                    <div className="grid size-16 place-items-center border bg-muted font-heading text-2xl font-bold text-primary">
+                    <div className="grid size-16 place-items-center border bg-muted font-terminal text-2xl font-bold text-worm worm-cursor">
                       rb
                     </div>
                   </EmptyMedia>
-                  <EmptyTitle>Your shelf is waiting.</EmptyTitle>
+                  <EmptyTitle className="font-terminal">
+                    <span className="call-number text-worm">&gt; no volumes in stack</span>
+                  </EmptyTitle>
                   <EmptyDescription>
                     Add a YouTube link above and your first readable book will land here.
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Badge variant="outline">No books yet</Badge>
+                  <span className="hud-label">request a title to begin</span>
                 </EmptyContent>
               </Empty>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                {books.map((item) => {
+                {books.map((item, index) => {
                   const book = item.book!;
+                  const accession = String(index + 1).padStart(3, "0");
                   return (
-                    <Card key={book._id} size="sm" className="transition-shadow hover:shadow-md">
+                    <Card key={book._id} size="sm" className="record-card">
                       <CardHeader>
+                        <div className="mb-2 flex items-center justify-between gap-3 border-b pb-2">
+                          <span className="hud-label text-worm">volume.{accession}</span>
+                          <span className="hud-label">{statusCopy[book.status]}</span>
+                        </div>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <Badge variant="outline">{statusCopy[book.status]}</Badge>
-                            <CardTitle className="mt-3 line-clamp-2 font-heading text-lg">
+                            <CardTitle className="line-clamp-2 font-heading text-lg">
                               {book.title}
                             </CardTitle>
                             <CardDescription className="line-clamp-2">
@@ -339,8 +349,8 @@ export default function Home() {
                         <Separator />
                       </CardContent>
                       <CardFooter className="justify-between gap-3">
-                        <span className="truncate text-xs text-muted-foreground">
-                          {book.language.toUpperCase()} / {book.blocks.length} blocks
+                        <span className="call-number truncate text-xs text-muted-foreground">
+                          {book.language.toUpperCase()}·{String(book.blocks.length).padStart(3, "0")} BLK
                         </span>
                         <Button asChild size="sm" variant="outline">
                           <Link href={`/books/${book._id}`}>
@@ -360,6 +370,7 @@ export default function Home() {
         <aside className="flex flex-col gap-4">
           <Card>
             <CardHeader>
+              <span className="hud-label text-worm">field manual / 001</span>
               <CardTitle className="font-heading">How chapters appear</CardTitle>
               <CardDescription>
                 The formatter recognizes titles, chapters, quotes, sections, and
@@ -369,6 +380,7 @@ export default function Home() {
           </Card>
           <Card>
             <CardHeader>
+              <span className="hud-label text-worm">field manual / 002</span>
               <CardTitle className="font-heading">Shared source, private shelf</CardTitle>
               <CardDescription>
                 Finished books are canonical per video and language. Your saved shelf
@@ -378,6 +390,7 @@ export default function Home() {
           </Card>
           <Card className="bg-primary text-primary-foreground">
             <CardHeader>
+              <span className="hud-label text-primary-foreground/70">transmission</span>
               <CardTitle className="font-heading">Reading note</CardTitle>
               <CardDescription className="text-primary-foreground/80">
                 Longer talks make better chaptered books. Short clips usually become

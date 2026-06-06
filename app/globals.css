@@ -42,6 +42,12 @@
   --color-reader: var(--reader);
   --color-reader-foreground: var(--reader-foreground);
   --color-worm: var(--worm);
+  --color-glow: var(--glow);
+  --color-surface: var(--surface);
+  --color-surface-low: var(--surface-low);
+  --color-surface-high: var(--surface-high);
+  --color-surface-highest: var(--surface-highest);
+  --font-terminal: var(--font-space-grotesk);
   --radius-sm: 0rem;
   --radius-md: 0rem;
   --radius-lg: 0rem;
@@ -79,6 +85,13 @@
   --reader: oklch(0.992 0.022 94);
   --reader-foreground: oklch(0.23 0.04 72);
   --worm: oklch(0.62 0.12 135);
+  /* Phosphor amber: the terminal "glow" accent. Green stays the identity. */
+  --glow: oklch(0.8 0.13 80);
+  /* Warm elevation ladder (Material-3 style) for terminal chrome depth. */
+  --surface: oklch(0.975 0.022 88);
+  --surface-low: oklch(0.96 0.026 90);
+  --surface-high: oklch(0.93 0.03 92);
+  --surface-highest: oklch(0.9 0.034 94);
   --radius: 0rem;
   --sidebar: oklch(0.955 0.035 100);
   --sidebar-foreground: oklch(0.245 0.047 76);
@@ -91,33 +104,40 @@
 }
 
 .dark {
-  --background: oklch(0.19 0.035 82);
-  --foreground: oklch(0.94 0.03 94);
-  --card: oklch(0.235 0.04 86);
-  --card-foreground: oklch(0.94 0.03 94);
-  --popover: oklch(0.235 0.04 86);
-  --popover-foreground: oklch(0.94 0.03 94);
+  /* The amber-phosphor reference terminal: deep, warm, near-black sepia. */
+  --background: oklch(0.16 0.018 66);
+  --foreground: oklch(0.92 0.025 90);
+  --card: oklch(0.2 0.022 70);
+  --card-foreground: oklch(0.92 0.025 90);
+  --popover: oklch(0.2 0.022 70);
+  --popover-foreground: oklch(0.92 0.025 90);
   --primary: oklch(0.72 0.12 136);
-  --primary-foreground: oklch(0.17 0.035 104);
-  --secondary: oklch(0.31 0.06 125);
+  --primary-foreground: oklch(0.15 0.03 104);
+  --secondary: oklch(0.29 0.05 110);
   --secondary-foreground: oklch(0.92 0.04 105);
-  --muted: oklch(0.28 0.035 87);
-  --muted-foreground: oklch(0.74 0.035 91);
-  --accent: oklch(0.74 0.11 62);
-  --accent-foreground: oklch(0.19 0.035 82);
+  --muted: oklch(0.24 0.025 74);
+  --muted-foreground: oklch(0.73 0.04 84);
+  --accent: oklch(0.8 0.13 80);
+  --accent-foreground: oklch(0.16 0.02 66);
   --destructive: oklch(0.7 0.17 28);
-  --border: oklch(0.42 0.035 84);
-  --input: oklch(0.38 0.035 84);
-  --ring: oklch(0.72 0.12 136);
+  /* Faint amber hairlines — echoes webv1's rgba(152,203,255,.14) borders. */
+  --border: oklch(0.83 0.14 82 / 0.16);
+  --input: oklch(0.83 0.14 82 / 0.12);
+  --ring: oklch(0.83 0.14 82 / 0.4);
   --chart-1: oklch(0.72 0.12 136);
-  --chart-2: oklch(0.76 0.11 78);
+  --chart-2: oklch(0.82 0.13 82);
   --chart-3: oklch(0.72 0.12 42);
   --chart-4: oklch(0.64 0.09 188);
   --chart-5: oklch(0.66 0.08 319);
-  --reader: oklch(0.235 0.035 79);
-  --reader-foreground: oklch(0.93 0.028 93);
-  --worm: oklch(0.72 0.12 136);
-  --sidebar: oklch(0.235 0.04 86);
+  --reader: oklch(0.21 0.025 74);
+  --reader-foreground: oklch(0.91 0.026 90);
+  --worm: oklch(0.83 0.14 82);
+  --glow: oklch(0.83 0.14 82);
+  --surface: oklch(0.18 0.02 68);
+  --surface-low: oklch(0.16 0.018 66);
+  --surface-high: oklch(0.23 0.024 72);
+  --surface-highest: oklch(0.27 0.026 74);
+  --sidebar: oklch(0.2 0.022 70);
   --sidebar-foreground: oklch(0.94 0.03 94);
   --sidebar-primary: oklch(0.72 0.12 136);
   --sidebar-primary-foreground: oklch(0.17 0.035 104);
@@ -143,6 +163,50 @@
 }
 
 @layer components {
+  /* HUD micro-label: the connective tissue ported from webv1. The system voice. */
+  .hud-label {
+    font-family: var(--font-terminal), ui-sans-serif, sans-serif;
+    font-size: 0.625rem;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.26em;
+    color: var(--muted-foreground);
+  }
+
+  /* Real tabular mono for call numbers / accession codes — out-terminals webv1. */
+  .call-number {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+
+  /* Signature glow, recolored from webv1's electric blue to warm phosphor amber. */
+  .phosphor-glow {
+    text-shadow:
+      0 0 10px color-mix(in oklch, var(--glow), transparent 75%),
+      0 0 24px color-mix(in oklch, var(--glow), transparent 90%);
+  }
+
+  /* Blinking amber worm — the prompt cursor / mascot. */
+  .worm-cursor::after {
+    content: "▍";
+    margin-left: 0.15em;
+    color: var(--glow);
+    animation: rb-blink 1.1s steps(1) infinite;
+  }
+
+  /* Soft phosphor bloom on hover for record cards (webv1's exact interaction). */
+  .record-card {
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .record-card:hover {
+    border-color: color-mix(in oklch, var(--glow), transparent 40%);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--glow), transparent 70%),
+      0 0 24px color-mix(in oklch, var(--glow), transparent 88%);
+  }
+
   .reader-flow {
     @apply font-reader text-reader-foreground;
   }
@@ -169,6 +233,17 @@
   }
   .animate-page-prev {
     animation: rb-page-prev 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes rb-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
   }
 }
 

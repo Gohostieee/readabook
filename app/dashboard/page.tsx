@@ -69,9 +69,10 @@ export default function DashboardPage() {
         <div className="mx-auto grid max-w-md gap-6 px-4 py-16 sm:px-6">
           <Card>
             <CardHeader>
-              <div className="grid size-10 place-items-center border bg-muted text-primary">
+              <div className="grid size-10 place-items-center border bg-muted text-worm">
                 <Lock />
               </div>
+              <span className="hud-label text-worm">restricted terminal</span>
               <CardTitle className="font-heading text-2xl">
                 Cost dashboard
               </CardTitle>
@@ -113,6 +114,7 @@ export default function DashboardPage() {
       <AppHeader backHref="/" backLabel="Home" />
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6">
         <div className="flex flex-col gap-1">
+          <span className="hud-label text-worm">system diagnostics / spend</span>
           <h1 className="font-heading text-3xl font-semibold">AI cost dashboard</h1>
           <p className="text-sm text-muted-foreground">
             Spend across the last {num(totals.requests)} recorded requests.
@@ -122,37 +124,37 @@ export default function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Total cost</CardDescription>
-              <CardTitle className="font-heading text-2xl">
+              <CardDescription className="hud-label">Total cost</CardDescription>
+              <CardTitle className="call-number text-2xl text-worm">
                 {usd(totals.costUsd)}
               </CardTitle>
             </CardHeader>
           </Card>
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Requests</CardDescription>
-              <CardTitle className="font-heading text-2xl">
+              <CardDescription className="hud-label">Requests</CardDescription>
+              <CardTitle className="call-number text-2xl text-worm">
                 {num(totals.requests)}
               </CardTitle>
             </CardHeader>
             <CardContent className="flex gap-2">
-              <Badge variant="default">{totals.byStatus.success} ok</Badge>
-              <Badge variant="secondary">{totals.byStatus.fallback} fallback</Badge>
-              <Badge variant="destructive">{totals.byStatus.failed} failed</Badge>
+              <Badge variant="default" className="hud-label">{totals.byStatus.success} ok</Badge>
+              <Badge variant="secondary" className="hud-label">{totals.byStatus.fallback} fallback</Badge>
+              <Badge variant="destructive" className="hud-label">{totals.byStatus.failed} failed</Badge>
             </CardContent>
           </Card>
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Input tokens</CardDescription>
-              <CardTitle className="font-heading text-2xl">
+              <CardDescription className="hud-label">Input tokens</CardDescription>
+              <CardTitle className="call-number text-2xl text-worm">
                 {num(totals.inputTokens)}
               </CardTitle>
             </CardHeader>
           </Card>
           <Card size="sm">
             <CardHeader>
-              <CardDescription>Output tokens</CardDescription>
-              <CardTitle className="font-heading text-2xl">
+              <CardDescription className="hud-label">Output tokens</CardDescription>
+              <CardTitle className="call-number text-2xl text-worm">
                 {num(totals.outputTokens)}
               </CardTitle>
             </CardHeader>
@@ -161,6 +163,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
+            <span className="hud-label text-worm">stable feed</span>
             <CardTitle className="font-heading">Recent requests</CardTitle>
             <CardDescription>Most recent {recent.length} requests.</CardDescription>
           </CardHeader>
@@ -169,15 +172,15 @@ export default function DashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>When</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Input</TableHead>
-                    <TableHead className="text-right">Output</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-right">Duration</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Error</TableHead>
+                    <TableHead className="hud-label">When</TableHead>
+                    <TableHead className="hud-label">Model</TableHead>
+                    <TableHead className="hud-label">Status</TableHead>
+                    <TableHead className="hud-label text-right">Input</TableHead>
+                    <TableHead className="hud-label text-right">Output</TableHead>
+                    <TableHead className="hud-label text-right">Cost</TableHead>
+                    <TableHead className="hud-label text-right">Duration</TableHead>
+                    <TableHead className="hud-label">Source</TableHead>
+                    <TableHead className="hud-label">Error</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -188,11 +191,11 @@ export default function DashboardPage() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{row.model}</TableCell>
                       <TableCell>
-                        <Badge variant={statusVariant[row.status] ?? "secondary"}>
+                        <Badge variant={statusVariant[row.status] ?? "secondary"} className="hud-label">
                           {row.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="call-number text-right">
                         {num(row.inputTokens)}
                         {row.cachedInputTokens > 0 ? (
                           <span className="text-muted-foreground">
@@ -200,9 +203,9 @@ export default function DashboardPage() {
                           </span>
                         ) : null}
                       </TableCell>
-                      <TableCell className="text-right">{num(row.outputTokens)}</TableCell>
-                      <TableCell className="text-right font-medium">{usd(row.costUsd)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="call-number text-right">{num(row.outputTokens)}</TableCell>
+                      <TableCell className="call-number text-right font-medium text-worm">{usd(row.costUsd)}</TableCell>
+                      <TableCell className="call-number text-right text-muted-foreground">
                         {num(row.durationMs)}ms
                       </TableCell>
                       <TableCell className="text-muted-foreground">{row.tokenSource}</TableCell>

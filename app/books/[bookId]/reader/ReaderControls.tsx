@@ -29,8 +29,9 @@ export function ReaderControls({
 
       <div className="flex flex-1 items-center gap-3">
         <Progress value={progress} className="h-1.5" />
-        <span className="shrink-0 font-sans text-xs tabular-nums text-muted-foreground">
-          {current + 1} / {total}
+        <span className="call-number shrink-0 text-xs text-worm">
+          <span className="hud-label mr-1 text-muted-foreground">pg</span>
+          {String(current + 1).padStart(3, "0")} / {String(total).padStart(3, "0")}
         </span>
       </div>
 

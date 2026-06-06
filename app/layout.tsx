@@ -4,6 +4,7 @@ import {
   IBM_Plex_Sans,
   Libre_Baskerville,
   Source_Serif_4,
+  Space_Grotesk,
 } from "next/font/google";
 import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
@@ -32,8 +33,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// System / terminal voice. Drives the "reference terminal" chrome and HUD labels.
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
-  title: "readabook",
+  title: "readabook | reference terminal",
   description: "Turn YouTube transcripts into cozy books for your private shelf.",
   icons: {
     icon: "/convex.svg",
@@ -48,7 +56,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${ibmPlexSans.variable} ${libreBaskerville.variable} ${sourceSerif.variable} ${geistMono.variable} antialiased`}
+        className={`${ibmPlexSans.variable} ${libreBaskerville.variable} ${sourceSerif.variable} ${geistMono.variable} ${spaceGrotesk.variable} antialiased`}
       >
         <ClerkProvider
           dynamic

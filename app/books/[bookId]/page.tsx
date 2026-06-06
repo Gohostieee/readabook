@@ -96,7 +96,7 @@ export default function BookPage({ params }: PageProps) {
             disabled={!bookId}
           >
             {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-            <span className="hidden sm:inline">Book ID</span>
+            <span className="hud-label hidden sm:inline">call number</span>
           </Button>
         }
       />
@@ -106,13 +106,15 @@ export default function BookPage({ params }: PageProps) {
           <Empty className="border bg-card/85">
             <EmptyHeader>
               <EmptyMedia>
-                <div className="grid size-16 place-items-center border bg-muted font-heading text-2xl font-bold text-primary">
+                <div className="grid size-16 place-items-center border bg-muted font-terminal text-2xl font-bold text-worm worm-cursor">
                   rb
                 </div>
               </EmptyMedia>
-              <EmptyTitle>Finding your place...</EmptyTitle>
+              <EmptyTitle>
+                <span className="call-number text-worm">&gt; accessing archive…</span>
+              </EmptyTitle>
               <EmptyDescription>
-                Opening this book and adding it to your private shelf.
+                Opening this volume and adding it to your private shelf.
               </EmptyDescription>
             </EmptyHeader>
             <Spinner />
@@ -122,12 +124,13 @@ export default function BookPage({ params }: PageProps) {
         <section className="mx-auto max-w-3xl px-4 py-16">
           <Card>
             <CardHeader>
+              <span className="hud-label text-worm">accession log</span>
               <CardTitle className="font-heading text-3xl">{book.title}</CardTitle>
               <CardDescription>
-                This book is still being stitched together from the transcript.
+                This volume is still being stitched together from the transcript.
               </CardDescription>
               <CardAction>
-                <Badge>{statusCopy[book.status]}</Badge>
+                <Badge className="hud-label">{statusCopy[book.status]}</Badge>
               </CardAction>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">

@@ -13,10 +13,11 @@ export default function SignUpPage() {
       <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <Card className="justify-between bg-accent text-accent-foreground">
           <CardHeader className="gap-6">
-            <div className="grid size-20 place-items-center border border-accent-foreground/40 font-heading text-3xl font-bold">
+            <div className="grid size-20 place-items-center border border-accent-foreground/40 font-terminal text-3xl font-bold worm-cursor">
               rb
             </div>
             <div className="flex flex-col gap-3">
+              <span className="hud-label text-accent-foreground/70">reference terminal · enroll</span>
               <CardTitle className="font-heading text-5xl leading-tight">
                 Start a tiny library of your own.
               </CardTitle>
@@ -29,6 +30,7 @@ export default function SignUpPage() {
         </Card>
         <Card>
           <CardHeader>
+            <span className="hud-label text-worm">signal.enroll</span>
             <CardTitle className="font-heading text-2xl">Create account</CardTitle>
             <CardDescription>Save every finished book to your shelf.</CardDescription>
           </CardHeader>

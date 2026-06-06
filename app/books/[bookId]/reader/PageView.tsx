@@ -27,8 +27,8 @@ export function PageView({
           );
         })}
       </div>
-      <div className="mt-4 shrink-0 text-center font-sans text-xs text-muted-foreground">
-        {pageNumber}
+      <div className="call-number mt-4 shrink-0 text-center text-xs text-worm/70">
+        {String(pageNumber).padStart(3, "0")}
       </div>
     </div>
   );

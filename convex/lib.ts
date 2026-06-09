@@ -263,6 +263,36 @@ export function paragraphBlocksFromText(text: string): BookBlock[] {
     .map((part) => ({ kind: "paragraph" as const, text: part }));
 }
 
+export type BookChapter = {
+  chapterIndex: number;
+  title: string;
+  text: string;
+};
+
+// Group a flat block list into chapters for the fact-check stage. Each
+// `chapter` block starts a new chapter; the Nth chapter block is chapterIndex N
+// (matching the reader's chapter numbering). Content before the first chapter
+// (title/subtitle) is ignored, and chapters with no body text are dropped.
+// `text` is the flattened spoken content of the chapter's body blocks.
+export function groupChapters(blocks: BookBlock[]): BookChapter[] {
+  const chapters: BookChapter[] = [];
+  let currentBlocks: BookBlock[] = [];
+  for (const block of blocks) {
+    if (block.kind === "chapter") {
+      chapters.push({
+        chapterIndex: chapters.length,
+        title: block.text || `Chapter ${chapters.length + 1}`,
+        text: "",
+      });
+      currentBlocks = [];
+    } else if (chapters.length > 0) {
+      currentBlocks.push(block);
+      chapters[chapters.length - 1].text = blocksToPlainText(currentBlocks);
+    }
+  }
+  return chapters.filter((c) => c.text.trim().length > 0);
+}
+
 export function fallbackBookFromTranscript(title: string, transcript: string) {
   const blocks: BookBlock[] = [
     { kind: "title", text: title || "Untitled Readabook" },

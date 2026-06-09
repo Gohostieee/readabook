@@ -63,3 +63,29 @@ export type DiagramData =
     };
 
 export type Chapter = { text: string; act?: string; summary?: string };
+
+// Fact-check layer. Mirrors the `bookFacts` rows returned by getBookReadonly.
+export type FactVerdict =
+  | "pending"
+  | "supported"
+  | "refuted"
+  | "misleading"
+  | "unverifiable";
+
+export type ReaderFact = {
+  _id: string;
+  chapterIndex: number;
+  chapterTitle: string;
+  statement: string;
+  quote: string;
+  verdict: FactVerdict;
+  confidence: number | null;
+  explanation: string | null;
+  sources: { url: string; title: string }[];
+};
+
+export type FactCheckJob = {
+  status: "extracting" | "pruning" | "checking" | "completed" | "failed";
+  totalFacts: number;
+  checkedFacts: number;
+} | null;

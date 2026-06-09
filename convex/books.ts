@@ -248,7 +248,19 @@ export const getBookReadonly = query({
       .query("bookJobs")
       .withIndex("by_bookId", (q) => q.eq("bookId", args.bookId))
       .unique();
-    return { book, video, job };
+    // Post-formatting fact-check stage: its job (for progress) plus the facts
+    // themselves (for reader highlights + the fact-check panel).
+    const factCheckJob = await ctx.db
+      .query("factCheckJobs")
+      .withIndex("by_bookId", (q) => q.eq("bookId", args.bookId))
+      .first();
+    const facts = await ctx.db
+      .query("bookFacts")
+      .withIndex("by_bookId_and_chapterIndex", (q) =>
+        q.eq("bookId", args.bookId),
+      )
+      .take(500);
+    return { book, video, job, factCheckJob, facts };
   },
 });
 
@@ -477,6 +489,13 @@ export const completeBook = internalMutation({
       status: "completed",
       errorMessage: null,
       updatedAt: Date.now(),
+    });
+
+    // Kick off the post-formatting fact-check stage. It runs independently —
+    // the book is already complete and readable; fact-checking fills in
+    // verdicts afterward and never blocks or degrades the book.
+    await ctx.scheduler.runAfter(0, internal.factChecker.factCheckBook, {
+      bookId: job.bookId,
     });
 
     return job.bookId;

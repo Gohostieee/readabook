@@ -8,8 +8,11 @@
  * @module
  */
 
+import type * as agentShared from "../agentShared.js";
 import type * as aiCosts from "../aiCosts.js";
 import type * as books from "../books.js";
+import type * as factChecker from "../factChecker.js";
+import type * as facts from "../facts.js";
 import type * as formatter from "../formatter.js";
 import type * as lib from "../lib.js";
 import type * as transcripts from "../transcripts.js";
@@ -21,8 +24,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentShared: typeof agentShared;
   aiCosts: typeof aiCosts;
   books: typeof books;
+  factChecker: typeof factChecker;
+  facts: typeof facts;
   formatter: typeof formatter;
   lib: typeof lib;
   transcripts: typeof transcripts;

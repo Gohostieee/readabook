@@ -27,6 +27,18 @@ const PRICING: Record<string, ModelPricing> = {
 // always recorded rather than silently zeroed.
 const DEFAULT_PRICING = PRICING["gpt-5.5"];
 
+// USD per built-in web_search tool call. The Responses API bills hosted web
+// search separately from tokens, so token pricing alone undercounts the
+// fact-check stage. We can't read the exact call count from usage, so the
+// fact-checker approximates one search per checked fact and folds that surcharge
+// into the logged cost via `webSearchSurchargeUsd`. Source: OpenAI tools pricing.
+export const WEB_SEARCH_COST_PER_CALL = 0.01;
+
+/** Estimated USD surcharge for `searches` built-in web_search tool calls. */
+export function webSearchSurchargeUsd(searches: number): number {
+  return Math.round(Math.max(0, searches) * WEB_SEARCH_COST_PER_CALL * 1_000_000) / 1_000_000;
+}
+
 function pricingForModel(model: string): ModelPricing {
   if (PRICING[model]) return PRICING[model];
   const base = Object.keys(PRICING).find((id) => model.startsWith(id));
@@ -146,6 +158,9 @@ export const logAiRequest = internalMutation({
             v.literal("outline"),
             v.literal("chapter"),
             v.literal("single"),
+            v.literal("extract"),
+            v.literal("prune"),
+            v.literal("check"),
           ),
           index: v.optional(v.number()),
           status: v.union(

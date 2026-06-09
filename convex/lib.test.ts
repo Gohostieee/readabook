@@ -5,6 +5,7 @@ import {
   blocksToPlainText,
   cleanTranscriptText,
   fallbackBookFromTranscript,
+  groupChapters,
   parseBookMarkup,
 } from "./lib";
 
@@ -67,6 +68,45 @@ describe("book markup helpers", () => {
       },
       { kind: "paragraph", text: "Typically, no." },
     ]);
+  });
+});
+
+describe("groupChapters", () => {
+  test("groups body blocks under chapters, indexed by chapter order", () => {
+    const blocks: BookBlock[] = [
+      { kind: "title", text: "A Book" },
+      { kind: "subtitle", text: "Subtitle" },
+      { kind: "chapter", text: "One" },
+      { kind: "paragraph", text: "First chapter body." },
+      { kind: "paragraph", text: "More of chapter one." },
+      { kind: "chapter", text: "Two" },
+      { kind: "paragraph", text: "Second chapter body." },
+    ];
+
+    const chapters = groupChapters(blocks);
+    expect(chapters).toHaveLength(2);
+    expect(chapters[0]).toMatchObject({ chapterIndex: 0, title: "One" });
+    expect(chapters[0].text).toContain("First chapter body.");
+    expect(chapters[0].text).toContain("More of chapter one.");
+    expect(chapters[1]).toMatchObject({ chapterIndex: 1, title: "Two" });
+    expect(chapters[1].text).toContain("Second chapter body.");
+  });
+
+  test("ignores content before the first chapter and drops empty chapters", () => {
+    const blocks: BookBlock[] = [
+      { kind: "title", text: "A Book" },
+      { kind: "paragraph", text: "Orphan text before any chapter." },
+      { kind: "chapter", text: "Empty" },
+      { kind: "chapter", text: "Real" },
+      { kind: "paragraph", text: "Has body." },
+    ];
+
+    const chapters = groupChapters(blocks);
+    // The empty chapter is dropped, but the real chapter keeps its original
+    // index (1) so it stays aligned with the reader's chapter numbering.
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]).toMatchObject({ chapterIndex: 1, title: "Real" });
+    expect(chapters[0].text).not.toContain("Orphan text");
   });
 });
 

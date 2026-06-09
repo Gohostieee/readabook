@@ -1,11 +1,18 @@
 "use node";
 
-import { Agent, run } from "@openai/agents";
 import { v } from "convex/values";
-import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { z } from "zod";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import {
+  type Tokens,
+  ZERO_TOKENS,
+  addTokens,
+  describeError,
+  estimateFailedTokens,
+  mapWithConcurrency,
+  runStructured,
+} from "./agentShared";
 import { computeCostUsd } from "./aiCosts";
 import { type BookBlock, blocksToPlainText } from "./lib";
 
@@ -347,20 +354,6 @@ const FILL_INSTRUCTIONS = [
   "BALANCE: Prefer many faithful blocks over compression. Use rich kinds when the content supports them, but do not force structure onto plain narration — most blocks will be paragraphs. The `text` field of every block MUST contain the spoken words for that block (for dialogue/list/diagram, concatenate the spoken content).",
 ].join("\n");
 
-type Tokens = {
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-};
-
-const ZERO_TOKENS: Tokens = {
-  inputTokens: 0,
-  cachedInputTokens: 0,
-  outputTokens: 0,
-  totalTokens: 0,
-};
-
 // Per-call detail stored alongside the aggregated cost-ledger row.
 type CallBreakdownEntry = {
   phase: "outline" | "chapter" | "single";
@@ -370,173 +363,6 @@ type CallBreakdownEntry = {
   outputTokens: number;
   durationMs: number;
 };
-
-function addTokens(into: Tokens, more: Tokens) {
-  into.inputTokens += more.inputTokens;
-  into.cachedInputTokens += more.cachedInputTokens;
-  into.outputTokens += more.outputTokens;
-  into.totalTokens += more.totalTokens;
-}
-
-// Pull a normalized token breakdown out of the Agents SDK usage object. Cached
-// tokens live in `inputTokensDetails` under the `cached_tokens` key.
-function readUsage(usage: {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  inputTokensDetails?: Array<Record<string, number>>;
-}): Tokens {
-  const cachedInputTokens = (usage.inputTokensDetails ?? []).reduce(
-    (sum, details) => sum + (details.cached_tokens ?? 0),
-    0,
-  );
-  return {
-    inputTokens: usage.inputTokens,
-    cachedInputTokens,
-    outputTokens: usage.outputTokens,
-    totalTokens: usage.totalTokens,
-  };
-}
-
-// Run one structured agent call and return its parsed output plus a token count
-// (preferring the SDK's reported usage, falling back to a local tokenizer
-// estimate when usage is missing/zero). Throws if the model output fails schema
-// validation — e.g. a truncated response from hitting the output cap.
-async function runStructured<S extends z.ZodObject<z.ZodRawShape>>(opts: {
-  name: string;
-  model: string;
-  instructions: string;
-  schema: S;
-  input: string;
-}): Promise<{
-  output: z.infer<S>;
-  tokens: Tokens;
-  tokenSource: "usage" | "tokenizer";
-  durationMs: number;
-}> {
-  const startedAt = Date.now();
-  const agent = new Agent({
-    name: opts.name,
-    model: opts.model,
-    outputType: opts.schema,
-    instructions: opts.instructions,
-  });
-  const result = await run(agent, opts.input, { maxTurns: 8 });
-
-  const usage = readUsage(result.runContext.usage);
-  const hasUsage = usage.totalTokens > 0 || usage.inputTokens > 0;
-  const tokens = hasUsage
-    ? usage
-    : (() => {
-        const inputTokens = encode(
-          `${opts.instructions}\n\n${opts.input}`,
-        ).length;
-        const outputTokens = encode(
-          JSON.stringify(result.finalOutput ?? ""),
-        ).length;
-        return {
-          inputTokens,
-          cachedInputTokens: 0,
-          outputTokens,
-          totalTokens: inputTokens + outputTokens,
-        };
-      })();
-
-  // Parse last so a truncated/invalid response still surfaces as a thrown error
-  // for the caller's retry/fallback handling.
-  const output = opts.schema.parse(result.finalOutput);
-  return {
-    output,
-    tokens,
-    tokenSource: hasUsage ? "usage" : "tokenizer",
-    durationMs: Date.now() - startedAt,
-  };
-}
-
-// Flatten an unknown thrown value into a single rich line that surfaces the
-// detail the SDK normally buries: the OpenAI/Agents API error carries the real
-// reason (e.g. a 400 schema rejection) under `status`/`error`/`response`, and a
-// wrapping Error often hides it under `cause`. `Error.message` alone usually
-// loses all of that — so we walk every useful field.
-function describeError(error: unknown, depth = 0): string {
-  if (depth > 4) return "…";
-  if (!(error instanceof Error)) {
-    if (typeof error === "string") return error;
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return String(error);
-    }
-  }
-
-  const parts: string[] = [`${error.name}: ${error.message}`];
-  const extra = error as unknown as Record<string, unknown>;
-
-  // Scalar API-error fields (openai/@openai/agents APIError shape).
-  for (const key of [
-    "status",
-    "code",
-    "type",
-    "param",
-    "requestID",
-    "request_id",
-  ]) {
-    const value = extra[key];
-    if (value != null) parts.push(`${key}=${String(value)}`);
-  }
-
-  // The response body holds the human-readable reason for 4xx errors.
-  const body = extra.error ?? extra.response ?? extra.body;
-  if (body != null && body !== error) {
-    try {
-      parts.push(`body=${JSON.stringify(body)}`);
-    } catch {
-      /* non-serializable body — skip */
-    }
-  }
-
-  if (error.cause != null && error.cause !== error) {
-    parts.push(`cause=(${describeError(error.cause, depth + 1)})`);
-  }
-
-  return parts.join(" | ");
-}
-
-// Estimate the cost of a model call that threw before we could read usage (the
-// request usually completed and billed before a parse/validate step failed).
-function estimateFailedTokens(instructions: string, input: string): Tokens {
-  const inputTokens = encode(`${instructions}\n\n${input}`).length;
-  return {
-    inputTokens,
-    cachedInputTokens: 0,
-    outputTokens: 0,
-    totalTokens: inputTokens,
-  };
-}
-
-// Map over items with bounded concurrency, preserving input order in the result.
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (true) {
-      const index = next;
-      next += 1;
-      if (index >= items.length) return;
-      results[index] = await fn(items[index], index);
-    }
-  };
-  const workers = Array.from(
-    { length: Math.min(Math.max(1, limit), items.length) },
-    () => worker(),
-  );
-  await Promise.all(workers);
-  return results;
-}
 
 // Coerce the model's chapter list into contiguous, gap-free, in-order chunk
 // ranges that cover [0, chunkCount-1] exactly once. The model's startChunk is

@@ -9,9 +9,11 @@ import type {
   ListData,
   ParagraphData,
   QuoteData,
+  ReaderFact,
   StatData,
   StepsData,
 } from "./types";
+import { highlightFacts } from "./factStyles";
 import { Diagram } from "./blocks/Diagram";
 import {
   BulletList,
@@ -28,10 +30,14 @@ type BlockProps = {
   slice?: [number, number];
   /** Scale-to-fit factor for an oversized atomic block. */
   scale?: number;
+  /** Fact-check facts whose chapter contains this block (for highlighting). */
+  facts?: ReaderFact[];
+  /** Open the fact-check panel scrolled to a fact. */
+  onFactClick?: (factId: string) => void;
 };
 
-export function Block({ block, slice, scale }: BlockProps) {
-  const content = render(block, slice);
+export function Block({ block, slice, scale, facts, onFactClick }: BlockProps) {
+  const content = render(block, slice, facts, onFactClick);
   if (scale && scale < 1) {
     return (
       <div
@@ -48,7 +54,12 @@ export function Block({ block, slice, scale }: BlockProps) {
   return content;
 }
 
-function render(block: BookBlock, slice?: [number, number]) {
+function render(
+  block: BookBlock,
+  slice?: [number, number],
+  facts?: ReaderFact[],
+  onFactClick?: (factId: string) => void,
+) {
   switch (block.kind) {
     case "title":
       return (
@@ -88,7 +99,7 @@ function render(block: BookBlock, slice?: [number, number]) {
     case "section":
       return (
         <h3 className="mb-4 mt-8 font-heading text-2xl font-semibold leading-8">
-          {block.text}
+          {highlightFacts(block.text, facts, onFactClick)}
         </h3>
       );
 
@@ -106,7 +117,7 @@ function render(block: BookBlock, slice?: [number, number]) {
           }
         >
           {!isPull ? <Quote className="mb-3 size-5 text-primary" /> : null}
-          {block.text}
+          {highlightFacts(block.text, facts, onFactClick)}
           {data?.attribution ? (
             <footer className="mt-3 font-sans text-sm not-italic text-muted-foreground">
               — {data.attribution}
@@ -159,7 +170,7 @@ function render(block: BookBlock, slice?: [number, number]) {
               : "mb-6"
           }
         >
-          {text}
+          {highlightFacts(text, facts, onFactClick)}
         </p>
       );
     }

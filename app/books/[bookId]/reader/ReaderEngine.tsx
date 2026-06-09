@@ -8,14 +8,22 @@ import {
   useRef,
   useState,
 } from "react";
+import { ShieldCheck } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Block } from "./Block";
 import { CoverPage } from "./CoverPage";
+import { FactCheckPanel } from "./FactCheckPanel";
 import { IndexPage } from "./IndexPage";
 import { PageView } from "./PageView";
 import { ReaderControls } from "./ReaderControls";
 import { paginate, type PaginateBlock } from "./paginate";
-import type { BookBlock, Chapter, ChapterData } from "./types";
+import type {
+  BookBlock,
+  Chapter,
+  ChapterData,
+  FactCheckJob,
+  ReaderFact,
+} from "./types";
 
 // Shared page-frame styling for the deck, measurer, and metrics probe.
 const FRAME_CLASS =
@@ -30,6 +38,8 @@ type ReaderEngineProps = {
   language: string;
   readingMinutes?: number | null;
   preservationScore?: number | null;
+  facts?: ReaderFact[];
+  factCheckJob?: FactCheckJob;
 };
 
 export function ReaderEngine(props: ReaderEngineProps) {
@@ -41,6 +51,44 @@ export function ReaderEngine(props: ReaderEngineProps) {
       ),
     [props.blocks],
   );
+
+  const facts = useMemo(() => props.facts ?? [], [props.facts]);
+
+  // Chapter index for each content block: incremented at every `chapter` block
+  // (so the Nth chapter block is chapterIndex N — matching the backend's
+  // grouping). Blocks before the first chapter map to -1.
+  const blockChapterIndex = useMemo(() => {
+    const indices: number[] = [];
+    let chapterIndex = -1;
+    for (const b of contentBlocks) {
+      if (b.kind === "chapter") chapterIndex += 1;
+      indices.push(chapterIndex);
+    }
+    return indices;
+  }, [contentBlocks]);
+
+  const factsByChapter = useMemo(() => {
+    const map = new Map<number, ReaderFact[]>();
+    for (const fact of facts) {
+      const arr = map.get(fact.chapterIndex);
+      if (arr) arr.push(fact);
+      else map.set(fact.chapterIndex, [fact]);
+    }
+    return map;
+  }, [facts]);
+
+  const factsForBlock = useCallback(
+    (blockIndex: number) =>
+      factsByChapter.get(blockChapterIndex[blockIndex] ?? -1) ?? [],
+    [factsByChapter, blockChapterIndex],
+  );
+
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [activeFactId, setActiveFactId] = useState<string | null>(null);
+  const onFactClick = useCallback((factId: string) => {
+    setActiveFactId(factId);
+    setPanelOpen(true);
+  }, []);
 
   const chapters = useMemo<Chapter[]>(
     () =>
@@ -200,6 +248,8 @@ export function ReaderEngine(props: ReaderEngineProps) {
         page={page}
         blocks={contentBlocks}
         pageNumber={currentPage + 1}
+        factsForBlock={factsForBlock}
+        onFactClick={onFactClick}
       />
     ) : null;
   } else {
@@ -245,6 +295,35 @@ export function ReaderEngine(props: ReaderEngineProps) {
         onNext={goNext}
       />
 
+      {props.factCheckJob || facts.length > 0 ? (
+        <div className="mt-3 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveFactId(null);
+              setPanelOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ShieldCheck className="size-4 text-primary" />
+            <span>
+              Fact check
+              {props.factCheckJob &&
+              props.factCheckJob.status === "checking" &&
+              props.factCheckJob.totalFacts > 0
+                ? ` · ${props.factCheckJob.checkedFacts}/${props.factCheckJob.totalFacts}`
+                : facts.length > 0
+                  ? ` · ${facts.length}`
+                  : props.factCheckJob &&
+                      props.factCheckJob.status !== "completed" &&
+                      props.factCheckJob.status !== "failed"
+                    ? " · working…"
+                    : ""}
+            </span>
+          </button>
+        </div>
+      ) : null}
+
       {/* Offscreen measurer: renders every content block at the true width. */}
       {measureWidth > 0 ? (
         <Measurer
@@ -252,8 +331,17 @@ export function ReaderEngine(props: ReaderEngineProps) {
           blocks={contentBlocks}
           width={measureWidth}
           onMeasured={setHeights}
+          factsForBlock={factsForBlock}
         />
       ) : null}
+
+      <FactCheckPanel
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+        facts={facts}
+        job={props.factCheckJob ?? null}
+        activeFactId={activeFactId}
+      />
     </div>
   );
 }
@@ -262,10 +350,12 @@ function Measurer({
   blocks,
   width,
   onMeasured,
+  factsForBlock,
 }: {
   blocks: BookBlock[];
   width: number;
   onMeasured: (heights: number[]) => void;
+  factsForBlock?: (blockIndex: number) => ReaderFact[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -315,7 +405,7 @@ function Measurer({
           renders a single root element, so children map 1:1 to blocks. */}
       <div ref={ref} className="reader-flow overflow-hidden">
         {blocks.map((block, i) => (
-          <Block key={i} block={block} />
+          <Block key={i} block={block} facts={factsForBlock?.(i)} />
         ))}
       </div>
     </div>

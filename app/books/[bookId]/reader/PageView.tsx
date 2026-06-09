@@ -1,15 +1,19 @@
 import { Block } from "./Block";
 import type { Page } from "./paginate";
-import type { BookBlock } from "./types";
+import type { BookBlock, ReaderFact } from "./types";
 
 export function PageView({
   page,
   blocks,
   pageNumber,
+  factsForBlock,
+  onFactClick,
 }: {
   page: Page;
   blocks: BookBlock[];
   pageNumber: number;
+  factsForBlock?: (blockIndex: number) => ReaderFact[];
+  onFactClick?: (factId: string) => void;
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -23,6 +27,8 @@ export function PageView({
               block={block}
               slice={item.slice}
               scale={item.scale}
+              facts={factsForBlock?.(item.blockIndex)}
+              onFactClick={onFactClick}
             />
           );
         })}

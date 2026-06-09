@@ -7,7 +7,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ReaderEngine } from "./reader/ReaderEngine";
-import type { BookBlock } from "./reader/types";
+import type { BookBlock, FactCheckJob, ReaderFact } from "./reader/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -156,6 +156,8 @@ export default function BookPage({ params }: PageProps) {
             language={book.language}
             readingMinutes={book.readingMinutes}
             preservationScore={book.preservationScore}
+            facts={(data?.facts ?? []) as ReaderFact[]}
+            factCheckJob={(data?.factCheckJob ?? null) as FactCheckJob}
           />
         </section>
       )}

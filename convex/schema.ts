@@ -30,6 +30,22 @@ const bookBlockKind = v.union(
   v.literal("break"),
 );
 
+const factCheckStatus = v.union(
+  v.literal("extracting"),
+  v.literal("pruning"),
+  v.literal("checking"),
+  v.literal("completed"),
+  v.literal("failed"),
+);
+
+const factVerdict = v.union(
+  v.literal("pending"),
+  v.literal("supported"),
+  v.literal("refuted"),
+  v.literal("misleading"),
+  v.literal("unverifiable"),
+);
+
 const contentCategory = v.union(
   v.literal("fiction"),
   v.literal("nonfiction"),
@@ -113,6 +129,9 @@ export default defineSchema({
     searchText: v.optional(v.string()),
     preservationScore: v.union(v.number(), v.null()),
     warnings: v.array(v.string()),
+    // Status of the post-formatting fact-check stage. Optional: absent on books
+    // formatted before this layer existed, and on books still being formatted.
+    factCheckStatus: v.optional(factCheckStatus),
     completedAt: v.union(v.number(), v.null()),
     failedAt: v.union(v.number(), v.null()),
     errorMessage: v.union(v.string(), v.null()),
@@ -134,6 +153,41 @@ export default defineSchema({
     duration: v.union(v.number(), v.null()),
     lang: v.string(),
   }).index("by_bookId_and_index", ["bookId", "index"]),
+
+  // One row per fact-checked statement. Facts are an unbounded per-book list, so
+  // they live in their own table (never an array on `books`). Verdict/sources
+  // start empty (`pending`) after extraction+pruning and are filled in as each
+  // fact's web-search check lands, so the reader updates progressively.
+  bookFacts: defineTable({
+    bookId: v.id("books"),
+    chapterIndex: v.number(),
+    chapterTitle: v.string(),
+    statement: v.string(),
+    quote: v.string(),
+    verdict: factVerdict,
+    confidence: v.union(v.number(), v.null()),
+    explanation: v.union(v.string(), v.null()),
+    sources: v.array(v.object({ url: v.string(), title: v.string() })),
+    checkedAt: v.union(v.number(), v.null()),
+    createdAt: v.number(),
+  })
+    .index("by_bookId", ["bookId"])
+    .index("by_bookId_and_chapterIndex", ["bookId", "chapterIndex"]),
+
+  // Orchestration + progress for the post-formatting fact-check stage. Mirrors
+  // the bookJobs pattern; `checkedFacts`/`totalFacts` drive the reader's
+  // progress UI while step 3 runs.
+  factCheckJobs: defineTable({
+    bookId: v.id("books"),
+    userId: v.id("users"),
+    status: factCheckStatus,
+    totalFacts: v.number(),
+    checkedFacts: v.number(),
+    attempts: v.number(),
+    errorMessage: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_bookId", ["bookId"]),
 
   userBooks: defineTable({
     userId: v.id("users"),
@@ -198,6 +252,9 @@ export default defineSchema({
             v.literal("outline"),
             v.literal("chapter"),
             v.literal("single"),
+            v.literal("extract"),
+            v.literal("prune"),
+            v.literal("check"),
           ),
           index: v.optional(v.number()),
           status: v.union(
